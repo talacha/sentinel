@@ -359,3 +359,54 @@ about "expected evidence not cited" mean the model quoted a different passage, w
 | Token Factory dedicated endpoints: API paths | From Nebius docs; whether Nemotron 3 Nano is a template is unknown |
 | Sentinel against the real model, real Tavily, and `evals/run_evals.py` | **Never run.** This is the first thing to do after deploying |
 | Sentinel app, API, UI, Docker image | Tested locally against a stub model (see the main README) |
+
+## 7. Demo checklist
+
+**Where to demo.** Run the demo on a Nebius GPU VM (path A) and present from your laptop through
+an SSH tunnel to `http://localhost:8080`. It is the product's own claim, a dedicated single-tenant
+Nebius GPU, so it is both the honest demo and the on-theme one. Nothing is exposed publicly, which
+matters because Sentinel has no login. Cost: the pricing page listed an H100 at $3.85 per
+GPU-hour on-demand on 2026-09-23 (preemptible from $0.79, but those can be reclaimed, so not for
+a demo). That is roughly 25 GPU-hours per $100 of credit, before disk and other charges; check
+[nebius.com/prices](https://nebius.com/prices) and whether your event credits apply.
+
+**Order of work.** Nothing has run against a real model yet, so find problems on the cheap path
+first:
+
+1. **Today, no GPU:** point `.env` at Nebius Token Factory (see
+   [Running locally](../docs/running-locally.md#4b-nebius-token-factory-development-only)) with
+   synthetic samples and run `uv run python evals/run_evals.py`. Fix any prompt, vault, or
+   expectation mismatches here, where a mistake costs cents.
+2. **A day ahead:** check that your project has H100 quota (a request may take time), then
+   provision the VM ([A.2](#a2-create-the-vm)) and start vLLM. The first start downloads about
+   60 GB, so give it time; snapshot the disk once it works.
+3. **Run the evals on the VM's model** and rehearse the flow with all three samples.
+4. **Demo day:** start the VM well before you present, open the SSH tunnel, and check `/healthz`
+   shows the expected LLM host. Open the UI in a real browser once beforehand: it has only been
+   tested in a simulated DOM.
+5. **Afterwards:** delete the VM and disk ([Section 5](#5-operating-and-costing)).
+
+**A flow that shows the pitch (about three minutes).**
+
+1. Upload `samples/insurance/life_underwriting_01.txt` with the insurance vault. Show the three
+   verdicts and the quoted evidence behind them.
+2. On the threshold rule, show the single query that left the perimeter and the source it cites,
+   or the `revisar` when no clear source is found.
+3. Switch to the legal vault and upload `samples/legal/msa_01.txt` (then health with
+   `samples/health/patient_file_01.txt`): same engine, different vault.
+4. Show `/healthz` (which host the document went to) and `audit/audit.jsonl` (hashes, verdicts,
+   queries, no document text).
+
+**If judges need a link they can open.** Only do this if the event requires it. The app has no
+login, so put an authenticating reverse proxy with TLS (for example Caddy or nginx with basic
+auth) in front of it, keep Sentinel itself on `127.0.0.1`, expose only the proxy, use synthetic
+documents only, and remove it when the judging window ends. Otherwise share a recorded video or
+the repository instead.
+
+**Do not**
+
+- Present `scripts/stub_llm.py` as a real model. It has canned answers for one file.
+- Demo on the shared Token Factory endpoint while describing it as single-tenant. If you fall
+  back to it, say so: it is a fine backup for synthetic documents.
+- Upload real client data to any demo instance.
+- Rely on live model output you have not rehearsed. Keep a recorded run as a backup.

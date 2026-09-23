@@ -88,11 +88,20 @@ The query is rendered from the vault's template using only vault parameters and 
 
 ## Quickstart
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+**1. Install dependencies.** You need Python 3.11+ and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`, or `brew install uv`).
 
 ```bash
-uv sync
-cp .env.example .env    # set LLM_BASE_URL, LLM_MODEL, LLM_API_KEY (and TAVILY_API_KEY)
+git clone https://github.com/talacha/sentinel.git && cd sentinel
+uv sync                  # creates .venv and installs the pinned dependencies
+uv run pytest            # optional: confirm the install (107 tests, no network)
+```
+
+No uv? Plain `pip` works too (`python3 -m venv .venv && source .venv/bin/activate && pip install -e .`); see [Running locally](docs/running-locally.md#2-install-dependencies).
+
+**2. Configure and run.**
+
+```bash
+cp .env.example .env     # set LLM_BASE_URL, LLM_MODEL, LLM_API_KEY (and TAVILY_API_KEY)
 uv run uvicorn sentinel.api:app          # web UI + API at http://localhost:8000
 ```
 
@@ -117,7 +126,7 @@ docker compose up --build       # uses the same .env; app only, the model stays 
 ### Guides
 
 - **[Running locally](docs/running-locally.md)**: install, the no-GPU check, model backends (SSH tunnel to your Nebius GPU, Token Factory, local vLLM), Docker details, troubleshooting.
-- **[Deploying on Nebius](deploy/README.md)**: a GPU VM step by step (recommended), a Serverless AI endpoint, or a Token Factory dedicated endpoint; security checklist.
+- **[Deploying on Nebius](deploy/README.md)**: a GPU VM step by step (recommended), a Serverless AI endpoint, or a Token Factory dedicated endpoint; security checklist; and a [demo checklist](deploy/README.md#7-demo-checklist) (where to demo, in what order, and a three-minute flow).
 - **[Reference](docs/reference.md)**: all settings, CLI, API and report format, and the vault format.
 
 ## Vaults

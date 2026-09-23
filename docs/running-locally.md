@@ -6,29 +6,81 @@ then pick a real model backend in section 4. To host it for a team, see
 
 ## 1. Prerequisites
 
-- Python 3.11 or newer
-- [uv](https://docs.astral.sh/uv/) (`brew install uv`, or `pip install --user uv`, or the
-  installer from the uv docs)
-- Git
-- Optional: Docker (for `docker compose`), a [Tavily](https://tavily.com) API key (for scoped
-  verification)
+- **Git**
+- **Python 3.11 or newer.** Tested on 3.11, 3.12 (the Docker image), and 3.14. If you have
+  none, `uv` can download one for you (below).
+- **[uv](https://docs.astral.sh/uv/)**, recommended, or plain `pip` (see 2b).
+- macOS or Linux. Windows is untested: use WSL or Docker.
+- Optional: Docker (for `docker compose`) and a [Tavily](https://tavily.com) API key (for scoped
+  verification).
 
-## 2. Install and check
+No Node.js, database, or system libraries are needed. The web UI is static files.
+
+## 2. Install dependencies
+
+Run everything from the repository root: `.env`, `vaults/`, and `audit/` are resolved relative to
+the current directory.
+
+### 2a. With uv (recommended)
+
+Install uv if you do not have it (`uv --version` to check):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh    # macOS / Linux, official installer
+brew install uv                                     # or, on macOS with Homebrew
+pip install --user uv                               # or, with any existing Python
+```
+
+Then:
 
 ```bash
 git clone https://github.com/talacha/sentinel.git
 cd sentinel
+git checkout worktree-sentinel-core-build    # only until the feature branch is merged
 uv sync
-uv run pytest        # ~107 tests, no network, a few seconds
-uv run sentinel vaults
 ```
 
-`uv run sentinel vaults` should list `health_patient`, `insurance_life`, and `legal_contract`.
-Run every command from the repository root: `.env`, `vaults/`, and `audit/` are resolved relative
-to the current directory.
+`uv sync` creates `.venv/` in the repository, installs the exact dependency versions pinned in
+`uv.lock` (the ones the tests ran against), and installs the `sentinel` command in editable mode.
+It also installs the dev tools (pytest, ruff, fpdf2); add `--no-dev` for a runtime-only install.
+If your Python is older than 3.11, run `uv python install 3.12` first and uv will use it.
 
-> Until the feature branch is merged, use `git checkout worktree-sentinel-core-build` after
-> cloning.
+Run commands with `uv run <command>` (no activation needed), or activate the environment with
+`source .venv/bin/activate` and drop the `uv run` prefix.
+
+### 2b. With plain pip (no uv)
+
+```bash
+git clone https://github.com/talacha/sentinel.git
+cd sentinel
+git checkout worktree-sentinel-core-build    # only until the feature branch is merged
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .                  # the app and its runtime dependencies
+pip install pytest ruff fpdf2     # optional: what you need to run the tests and lint
+```
+
+Then run commands without the `uv run` prefix, for example `sentinel vaults`,
+`uvicorn sentinel.api:app`, and `python -m pytest`. pip picks the latest compatible dependency
+versions instead of the pinned `uv.lock`; the suite passes that way on Python 3.14, but if
+something breaks, use uv or Docker.
+
+### 2c. With Docker (no local Python)
+
+`docker compose up --build` builds and runs the app without installing anything else; see
+[section 6](#6-run-it-in-docker). You still need a model endpoint.
+
+### Check the install
+
+```bash
+uv run pytest             # ~107 tests, no network, a few seconds (pip: python -m pytest)
+uv run sentinel vaults    # (pip: sentinel vaults)
+```
+
+`sentinel vaults` should list `health_patient`, `insurance_life`, and `legal_contract`. The rest
+of this guide writes `uv run <command>`; if you used pip, drop the `uv run` prefix.
+
+To update later: `git pull && uv sync`.
 
 ## 3. Try it without a GPU (2 minutes)
 
