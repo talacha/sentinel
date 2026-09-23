@@ -1,0 +1,27 @@
+INPATIENT RECORD
+Meridian Demo Hospital
+(Synthetic sample: the patient, clinicians, and data below are fictional. No real PHI.)
+
+PATIENT
+Name: Test Patient A. Sample
+MRN: MRN-000123
+Date of birth: 1968-03-22
+
+ADMISSION
+Admission date: 2026-05-02
+Procedure date: 2026-05-02
+Procedure: Right total knee arthroplasty
+Informed consent for surgical procedure: signed by patient on 2026-05-01
+Vitals at admission: BP 132/84, HR 76, Temp 36.8 C
+
+ALLERGIES
+Allergies: Penicillin (rash, documented 2019)
+
+MEDICATIONS AT DISCHARGE
+Amoxicillin 500 mg three times daily for 7 days
+Oxycodone 30 mg every 6 hours as needed for pain
+Total daily MME: 180
+
+DISCHARGE
+Discharge date: 2026-05-06
+Discharge condition: Stable, ambulating with walker

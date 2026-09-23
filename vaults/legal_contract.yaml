@@ -1,0 +1,78 @@
+id: legal_contract
+title: Vendor services contract review
+description: >-
+  Illustrative contract-review playbook for a master services agreement, from the customer's
+  side. Demo values only; not legal advice.
+language: en
+params:
+  jurisdiction: United States
+
+rules:
+  - id: governing-law
+    title: Governing law is an approved jurisdiction
+    severity: high
+    references:
+      approved_a: New York
+      approved_b: Mexico
+    facts:
+      - { name: governing_law, type: text, description: "The governing law / jurisdiction named in the agreement" }
+    check: "approved_a in governing_law or approved_b in governing_law"
+    on_fail: no_cumple
+
+  - id: liability-cap
+    title: Provider liability cap is at least one year of fees
+    severity: high
+    facts:
+      - { name: liability_cap, type: number, description: "Provider's aggregate liability cap, in USD" }
+      - { name: annual_fees, type: number, description: "Total annual fees payable to the provider, in USD" }
+    check: "liability_cap >= annual_fees"
+    on_fail: no_cumple
+
+  - id: late-interest-cap
+    title: Late-payment interest does not exceed the statutory maximum
+    severity: medium
+    description: >-
+      The maximum is a vault reference that can go stale, so a failure is only asserted after
+      it is confirmed against a public source.
+    references:
+      max_annual_pct: 12
+    facts:
+      - { name: late_interest_pct_annual, type: number, description: "Late-payment interest rate, as an annual percentage" }
+    check: "late_interest_pct_annual <= max_annual_pct"
+    on_fail: no_cumple
+    external_check:
+      statement: >-
+        A statutory maximum of 12% per year on contractual late-payment interest between
+        commercial parties is currently in force in the United States.
+      query_template: "statutory maximum late payment interest rate commercial contracts {jurisdiction} {year}"
+
+  - id: termination-notice
+    title: Termination for convenience needs at least 30 days' notice
+    severity: medium
+    facts:
+      - { name: notice_days, type: number, description: "Days of written notice required to terminate for convenience" }
+    check: "notice_days >= 30"
+    on_fail: revisar
+
+  - id: auto-renewal
+    title: No long auto-renewal with a short opt-out window
+    severity: medium
+    criterion: >-
+      The agreement must not automatically renew for a term longer than 12 months, and any
+      non-renewal notice window must be at least 30 days.
+    on_fail: no_cumple
+
+  - id: confidentiality-survival
+    title: Confidentiality survives termination for at least three years
+    severity: medium
+    criterion: Confidentiality obligations survive termination or expiry for at least three years.
+    on_fail: no_cumple
+
+  - id: data-protection
+    title: Data-protection clause restricts processing and transfers
+    severity: high
+    criterion: >-
+      The agreement contains a data-protection clause that limits processing to the customer's
+      documented instructions and prohibits transfers of personal data without the customer's
+      written consent. If no such clause exists, cite nothing and answer revisar.
+    on_fail: no_cumple
