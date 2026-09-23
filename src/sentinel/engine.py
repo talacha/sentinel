@@ -7,11 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .audit import AuditLog
 from .compare import evaluate_rule
+from .config import Settings
 from .ingest import Document
-from .llm import LLM
+from .llm import LLM, OpenAICompatibleLLM
 from .models import ReviewReport, Rule, RuleResult, Vault, Verdict
 from .policy import finalize
-from .verify import SearchBudget, SearchClient, verify_reference
+from .verify import SearchBudget, SearchClient, TavilySearch, verify_reference
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,19 @@ class Engine:
         self.audit = audit
         self.max_searches = max_searches
         self.max_workers = max_workers
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> Engine:
+        """Wire the real model client, optional Tavily search, and audit log from config."""
+        search = TavilySearch(settings.tavily_api_key) if settings.tavily_api_key else None
+        log.info("LLM endpoint host: %s", settings.llm_host)
+        return cls(
+            OpenAICompatibleLLM.from_settings(settings),
+            search,
+            AuditLog(settings.audit_log_path),
+            max_searches=settings.max_searches_per_review,
+            max_workers=settings.max_workers,
+        )
 
     def review(self, doc: Document, vault: Vault) -> ReviewReport:
         budget = SearchBudget(self.max_searches)

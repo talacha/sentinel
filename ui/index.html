@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentinel Core</title>
+  <meta name="description" content="Self-hosted compliance review with cited evidence.">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div>
+        <h1>Sentinel Core</h1>
+        <p class="tagline">Rule-by-rule compliance review with cited evidence. Your documents stay on compute you control.</p>
+      </div>
+      <ul class="status" id="status" aria-label="Deployment status"></ul>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <form id="review-form" class="panel" autocomplete="off">
+      <div class="field">
+        <label for="vault">1. Vault (reference policy)</label>
+        <select id="vault" required></select>
+        <p class="hint" id="vault-desc"></p>
+        <details id="vault-rules" hidden>
+          <summary>Rules in this vault</summary>
+          <ul id="vault-rules-list"></ul>
+        </details>
+      </div>
+
+      <div class="field">
+        <label for="file">2. Document (PDF or text)</label>
+        <label class="drop" id="drop" for="file">
+          <input id="file" type="file" accept=".pdf,.txt,.text,.md,application/pdf,text/plain" required>
+          <span id="drop-text">Drop a file here or click to choose</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="run" disabled>Run review</button>
+        <span id="progress" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <section id="results" hidden aria-labelledby="results-title">
+      <div class="results-head">
+        <h2 id="results-title">Results</h2>
+        <button type="button" id="download" class="secondary">Download JSON</button>
+      </div>
+      <p class="meta" id="results-meta"></p>
+      <ul class="summary" id="summary"></ul>
+      <div id="cards"></div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p><code>revisar</code> means the evidence was insufficient or could not be verified: a person decides. Sentinel never guesses.</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
