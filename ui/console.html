@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Sentinel console</title>
+  <style>
+    :root { --bg:#f5f6f8; --surface:#fff; --text:#15181e; --muted:#5a6270; --border:#dde1e8; --accent:#0a5fd6; --on-accent:#fff;
+            --pass:#0b6b3a; --pass-bg:#e3f5eb; --fail:#a3232a; --fail-bg:#fbe8e9; --warn:#8a5700; --warn-bg:#fdf0d3; --skip:#5a6270; --skip-bg:#eceef2;
+            --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0e1014; --surface:#171a21; --text:#e9ebf0; --muted:#9aa2b2; --border:#2a2f3a; --accent:#7aa2ff; --on-accent:#0b0d12;
+              --pass:#66dc9c; --pass-bg:#12291e; --fail:#ff8f95; --fail-bg:#351619; --warn:#f3c463; --warn-bg:#2e2410; --skip:#9aa2b2; --skip-bg:#232833; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 16px; }
+    header { background:var(--surface); border-bottom:1px solid var(--border); }
+    .top { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; justify-content:space-between; padding:14px 0; }
+    h1 { margin:0; font-size:1.15rem; }
+    nav { display:flex; gap:6px; }
+    button { font:inherit; font-weight:600; border-radius:9px; padding:8px 16px; cursor:pointer; border:1.5px solid var(--border); background:var(--surface); color:var(--text); }
+    button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+    button.tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+    button.link { border:0; background:none; color:var(--accent); padding:2px 6px; font-weight:600; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent); outline-offset:2px; }
+    main { padding: 22px 0 60px; }
+    .muted { color:var(--muted); }
+    .banner { padding:12px 14px; border-radius:10px; margin-bottom:16px; border:1px solid; }
+    .banner.error { background:var(--fail-bg); color:var(--fail); border-color:var(--fail); }
+    .banner.ok { background:var(--pass-bg); color:var(--pass); border-color:var(--pass); }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+    .card h2 { margin:0 0 10px; font-size:1rem; }
+    .summary { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; justify-content:space-between; }
+    .verdict { font-size:1.2rem; font-weight:700; }
+    .verdict.ready { color:var(--pass); } .verdict.notready { color:var(--fail); }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .row { display:grid; grid-template-columns: 64px minmax(120px,190px) 1fr; gap:6px 12px; padding:8px 0; border-top:1px solid var(--border); align-items:start; }
+    .row:first-of-type { border-top:0; }
+    .chip { display:inline-block; text-align:center; padding:1px 8px; border-radius:999px; font-size:.72rem; font-weight:700; font-family:var(--mono); }
+    .s-pass { color:var(--pass); background:var(--pass-bg); } .s-fail { color:var(--fail); background:var(--fail-bg); }
+    .s-warn { color:var(--warn); background:var(--warn-bg); } .s-skip { color:var(--skip); background:var(--skip-bg); }
+    .name { font-weight:600; overflow-wrap:anywhere; }
+    .detail { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
+    .field { display:grid; gap:4px; padding:12px 0; border-top:1px solid var(--border); }
+    .field:first-of-type { border-top:0; }
+    .field label.lbl { font-weight:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .field .help { font-size:.85rem; color:var(--muted); }
+    .field .err { font-size:.85rem; color:var(--fail); font-weight:600; }
+    input[type=text], input[type=number], input[type=password], select { font:inherit; padding:8px 10px; border-radius:8px; border:1.5px solid var(--border); background:var(--bg); color:var(--text); width:100%; max-width:480px; }
+    .badge { font-size:.7rem; font-weight:700; padding:1px 8px; border-radius:999px; background:var(--warn-bg); color:var(--warn); }
+    .inline { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    code { font-family:var(--mono); font-size:.85em; background:var(--skip-bg); padding:1px 6px; border-radius:4px; overflow-wrap:anywhere; }
+    dialog { border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--surface); color:var(--text); width:min(92vw,380px); }
+    dialog::backdrop { background:rgb(0 0 0 / .5); }
+    dialog h2 { margin:0 0 4px; font-size:1.1rem; }
+    dialog label { display:grid; gap:4px; margin:12px 0; font-size:.9rem; font-weight:600; }
+    @media (max-width:560px) { .row { grid-template-columns: 60px 1fr; } .row .detail { grid-column: 1 / -1; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap top">
+      <h1>Sentinel console</h1>
+      <nav role="tablist" aria-label="Console sections">
+        <button class="tab" role="tab" id="tab-status" aria-selected="true" aria-controls="panel-status">Status</button>
+        <button class="tab" role="tab" id="tab-admin" aria-selected="false" aria-controls="panel-admin">Configuration</button>
+        <button id="signout" class="link" hidden>Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="banner" class="banner" role="alert" hidden></p>
+
+    <section id="panel-status" role="tabpanel" aria-labelledby="tab-status">
+      <div class="card summary">
+        <div>
+          <div id="verdict" class="verdict">Checking…</div>
+          <div id="verdict-sub" class="muted"></div>
+        </div>
+        <div class="actions">
+          <button id="refresh">Refresh</button>
+          <button id="live" class="primary">Run live checks</button>
+        </div>
+      </div>
+      <p class="muted" id="live-hint">Static checks are free and instant. <strong>Live checks</strong> contact the model endpoint and Tavily (a few tokens and one search) to prove the keys work and the model exists.</p>
+      <div id="groups"></div>
+    </section>
+
+    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" hidden>
+      <p class="muted">Changes apply immediately and are saved so they survive a restart. Secrets are write-only: they are never shown again. Every change is recorded in the audit log (field names only).</p>
+      <form id="config-form" autocomplete="off"></form>
+      <div class="actions" id="config-actions" hidden>
+        <button id="save" class="primary" type="button">Save changes</button>
+        <button id="verify" type="button">Verify with live checks</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="login" aria-labelledby="login-title">
+    <form id="login-form" method="dialog">
+      <h2 id="login-title">Admin sign in</h2>
+      <p class="muted" id="login-msg">Enter the admin credentials (ADMIN_USER / ADMIN_PASSWORD).</p>
+      <label>Username <input id="login-user" autocomplete="username" required></label>
+      <label>Password <input id="login-pass" type="password" autocomplete="current-password" required></label>
+      <div class="actions">
+        <button type="submit" class="primary">Sign in</button>
+        <button type="button" id="login-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+"use strict";
+
+// Sentinel console. Credentials live in memory only (never in storage or cookies) and are sent as
+// an explicit header, so the browser never attaches them to requests from other sites.
+// All server data is rendered with textContent.
+
+const $ = (id) => document.getElementById(id);
+const auth = { user: null, pass: null };
+const GROUP_ORDER = ["Model", "Search", "Access", "Storage", "Configuration", "General"];
+let currentConfig = [];
+
+function h(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v === null || v === undefined) continue;
+    if (k === "class") node.className = v;
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) {
+    if (c === null || c === undefined || c === false) continue;
+    node.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return node;
+}
+
+function banner(message, kind) {
+  const b = $("banner");
+  b.textContent = message || "";
+  b.className = "banner " + (kind || "error");
+  b.hidden = !message;
+}
+
+const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+
+function askLogin(message) {
+  return new Promise((resolve) => {
+    const dialog = $("login");
+    $("login-msg").textContent = message || "Enter the admin credentials (ADMIN_USER / ADMIN_PASSWORD).";
+    $("login-pass").value = "";
+    const done = (value) => {
+      dialog.removeEventListener("cancel", onCancel);
+      $("login-form").removeEventListener("submit", onSubmit);
+      $("login-cancel").removeEventListener("click", onCancelClick);
+      if (dialog.open) dialog.close();
+      resolve(value);
+    };
+    const onSubmit = (e) => { e.preventDefault(); done({ user: $("login-user").value, pass: $("login-pass").value }); };
+    const onCancel = (e) => { e.preventDefault(); done(null); };
+    const onCancelClick = () => done(null);
+    dialog.addEventListener("cancel", onCancel);
+    $("login-form").addEventListener("submit", onSubmit);
+    $("login-cancel").addEventListener("click", onCancelClick);
+    dialog.showModal();
+    $("login-user").focus();
+  });
+}
+
+class Stop extends Error {}
+
+async function api(path, { method = "GET", json } = {}) {
+  for (;;) {
+    const headers = new Headers({ Accept: "application/json", "X-Sentinel-Admin": "1" });
+    if (auth.user !== null) headers.set("Authorization", "Basic " + toBase64(`${auth.user}:${auth.pass}`));
+    if (json !== undefined) headers.set("Content-Type", "application/json");
+    let resp;
+    try {
+      resp = await fetch(path, { method, headers, body: json === undefined ? undefined : JSON.stringify(json) });
+    } catch {
+      throw new Stop("Could not reach the server.");
+    }
+    if (resp.status === 403) {
+      const data = await resp.json().catch(() => ({}));
+      if (String(data.detail || "").includes("ADMIN_PASSWORD")) {
+        throw new Stop("The admin console is disabled on this server. Set ADMIN_PASSWORD in its environment to enable it.");
+      }
+    }
+    if (resp.status !== 401) return resp;
+    const creds = await askLogin(auth.user !== null ? "That username or password was not accepted." : "");
+    if (!creds) throw new Stop("Sign in is required to use the console.");
+    auth.user = creds.user;
+    auth.pass = creds.pass;
+    $("signout").hidden = false;
+  }
+}
+
+// ------------------------------------------------------------------------------ status
+
+function renderStatus(payload) {
+  const v = $("verdict");
+  v.textContent = payload.ready ? "READY" : "NOT READY";
+  v.className = "verdict " + (payload.ready ? "ready" : "notready");
+  const c = payload.counts;
+  $("verdict-sub").textContent =
+    `${c.pass} passed, ${c.warn} warnings, ${c.fail} failed, ${c.skip} skipped · ` +
+    (payload.live ? "live checks" : "static checks only") + " · " + new Date(payload.checked_at).toLocaleTimeString();
+  const groups = $("groups");
+  groups.replaceChildren();
+  const names = [...new Set(payload.checks.map((x) => x.group))].sort(
+    (a, b) => (GROUP_ORDER.indexOf(a) + 100) % 100 - (GROUP_ORDER.indexOf(b) + 100) % 100);
+  for (const group of names) {
+    groups.append(h("div", { class: "card" }, h("h2", {}, group),
+      payload.checks.filter((x) => x.group === group).map((x) =>
+        h("div", { class: "row" },
+          h("span", { class: `chip s-${x.status}` }, x.status.toUpperCase()),
+          h("span", { class: "name" }, x.name),
+          h("span", { class: "detail" }, x.detail)))));
+  }
+}
+
+async function loadStatus(live) {
+  banner("");
+  $("live").disabled = $("refresh").disabled = $("verify").disabled = true;
+  if (live) $("verdict-sub").textContent = "Running live checks… this can take up to 20 seconds.";
+  try {
+    const resp = await api(live ? "/v1/admin/status/live" : "/v1/admin/status", { method: live ? "POST" : "GET" });
+    if (resp.status === 409) throw new Stop("A live check is already running. Try again in a moment.");
+    if (!resp.ok) throw new Stop(`Status failed (HTTP ${resp.status}).`);
+    renderStatus(await resp.json());
+  } catch (err) {
+    if (err instanceof Stop) banner(err.message);
+    else throw err;
+  } finally {
+    $("live").disabled = $("refresh").disabled = $("verify").disabled = false;
+  }
+}
+
+// ------------------------------------------------------------------------------ configuration
+
+function inputFor(f) {
+  if (!f.editable) return h("code", {}, String(f.value ?? ""));
+  if (f.secret) {
+    return h("div", { class: "inline" },
+      h("input", { type: "password", "data-name": f.name, autocomplete: "new-password",
+        placeholder: f.is_set ? `set (${f.length} chars): type to replace` : "not set" }),
+      f.is_set ? h("label", {}, h("input", { type: "checkbox", "data-clear": f.name }), " remove") : null);
+  }
+  if (f.kind === "bool") {
+    return h("select", { "data-name": f.name },
+      h("option", { value: "true", selected: f.value === true }, "on"),
+      h("option", { value: "false", selected: f.value === false }, "off"));
+  }
+  if (f.kind === "choice") {
+    return h("select", { "data-name": f.name }, f.choices.map((c) => h("option", { value: c, selected: c === f.value }, c)));
+  }
+  if (f.kind === "int" || f.kind === "float") {
+    return h("input", { type: "number", "data-name": f.name, value: f.value, min: f.min, max: f.max, step: f.kind === "int" ? "1" : "any" });
+  }
+  return h("input", { type: "text", "data-name": f.name, value: f.value ?? "", spellcheck: "false" });
+}
+
+function renderConfig(fields) {
+  currentConfig = fields;
+  const form = $("config-form");
+  form.replaceChildren();
+  const names = [...new Set(fields.map((f) => f.group))];
+  for (const group of names) {
+    form.append(h("div", { class: "card" }, h("h2", {}, group),
+      fields.filter((f) => f.group === group).map((f) =>
+        h("div", { class: "field", "data-field": f.name },
+          h("label", { class: "lbl" }, f.label,
+            f.overridden ? h("span", { class: "badge" }, "overridden") : null,
+            f.overridden ? h("button", { type: "button", class: "link", "data-reset": f.name }, "reset to environment value") : null),
+          inputFor(f),
+          h("span", { class: "help" }, f.help),
+          h("span", { class: "err", role: "alert", hidden: true })))));
+  }
+  for (const btn of form.querySelectorAll("[data-reset]")) {
+    btn.addEventListener("click", () => saveConfig({ set: {}, clear: [btn.dataset.reset] }));
+  }
+  $("config-actions").hidden = false;
+}
+
+function parseValue(f, raw) {
+  if (f.kind === "bool") return raw === "true";
+  if (f.kind === "int") return raw === "" ? null : Number(raw);
+  if (f.kind === "float") return raw === "" ? null : Number(raw);
+  return raw;
+}
+
+function collectChanges() {
+  const set = {};
+  const clear = [];
+  for (const f of currentConfig) {
+    if (!f.editable) continue;
+    if (f.secret) {
+      const typed = document.querySelector(`[data-name="${f.name}"]`).value;
+      const remove = document.querySelector(`[data-clear="${f.name}"]`)?.checked;
+      if (remove) clear.push(f.name);
+      else if (typed) set[f.name] = typed;
+      continue;
+    }
+    const el = document.querySelector(`[data-name="${f.name}"]`);
+    const value = parseValue(f, el.value);
+    if (f.kind === "text" && value === "") {
+      if (f.overridden) clear.push(f.name); // emptying an overridden field reverts it
+      continue;
+    }
+    const original = f.kind === "text" ? (f.value ?? "") : f.value;
+    if (value !== null && value !== original) set[f.name] = value;
+  }
+  return { set, clear };
+}
+
+async function loadConfig() {
+  banner("");
+  try {
+    const resp = await api("/v1/admin/config");
+    if (!resp.ok) throw new Stop(`Could not load the configuration (HTTP ${resp.status}).`);
+    renderConfig((await resp.json()).fields);
+  } catch (err) {
+    if (err instanceof Stop) banner(err.message);
+    else throw err;
+  }
+}
+
+async function saveConfig(changes) {
+  changes = changes || collectChanges();
+  if (!Object.keys(changes.set).length && !changes.clear.length) {
+    banner("No changes to save.", "ok");
+    return;
+  }
+  if ("llm_base_url" in changes.set &&
+      !confirm("Changing the model endpoint changes where document text is sent. Continue?")) return;
+  for (const e of document.querySelectorAll(".err")) { e.hidden = true; e.textContent = ""; }
+  try {
+    const resp = await api("/v1/admin/config", { method: "PUT", json: changes });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 422 && data.detail?.errors) {
+      for (const [name, message] of Object.entries(data.detail.errors)) {
+        const slot = document.querySelector(`[data-field="${name}"] .err`);
+        if (slot) { slot.textContent = message; slot.hidden = false; }
+      }
+      banner("Nothing was saved. Fix the highlighted fields.");
+      return;
+    }
+    if (!resp.ok) throw new Stop(`Save failed (HTTP ${resp.status}).`);
+    renderConfig(data.fields);
+    banner(data.changed.length
+      ? `Saved: ${data.changed.join(", ")}. Run the live checks to verify the new settings.`
+      : "Saved. Nothing effectively changed.", "ok");
+  } catch (err) {
+    if (err instanceof Stop) banner(err.message);
+    else throw err;
+  }
+}
+
+// ------------------------------------------------------------------------------ tabs and start
+
+function show(tab, autoload = true) {
+  const status = tab === "status";
+  $("panel-status").hidden = !status;
+  $("panel-admin").hidden = status;
+  $("tab-status").setAttribute("aria-selected", String(status));
+  $("tab-admin").setAttribute("aria-selected", String(!status));
+  try { history.replaceState(null, "", status ? "/status" : "/admin"); } catch { /* not critical */ }
+  banner("");
+  if (!autoload) return;
+  if (status) loadStatus(false); else loadConfig();
+}
+
+$("tab-status").addEventListener("click", () => show("status"));
+$("tab-admin").addEventListener("click", () => show("admin"));
+$("refresh").addEventListener("click", () => loadStatus(false));
+$("live").addEventListener("click", () => loadStatus(true));
+$("save").addEventListener("click", () => saveConfig());
+// Switch tabs WITHOUT the automatic static load, so it cannot race the live run and overwrite it.
+$("verify").addEventListener("click", () => { show("status", false); loadStatus(true); });
+$("signout").addEventListener("click", () => { auth.user = auth.pass = null; location.reload(); });
+
+show(location.pathname.replace(/\/+$/, "") === "/admin" ? "admin" : "status");
+  </script>
+</body>
+</html>

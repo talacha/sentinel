@@ -43,6 +43,22 @@ class Settings(BaseSettings):
     max_workers: int = Field(default=4, ge=1)
     max_document_chars: int = Field(default=300_000, ge=1000)
 
+    # Public deployments: optional HTTP Basic login and a global usage cap (0 = unlimited).
+    access_user: str = "demo"
+    access_password: str | None = None
+    # Super-admin login for /status and /admin. Environment-only (never editable at runtime).
+    # Without ADMIN_PASSWORD those pages and their API refuse to work.
+    admin_user: str = "admin"
+    admin_password: str | None = None
+    max_reviews_per_hour: int = Field(default=0, ge=0)
+    # Origins allowed to call the API from a browser when the client app is hosted elsewhere
+    # (comma-separated, e.g. "https://app.example.com"). Empty disables CORS.
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_allow_origins.split(",") if o.strip()]
+
     def require_llm(self) -> tuple[str, str]:
         """Return (base_url, model) or raise a clear error if unset."""
         missing = [
