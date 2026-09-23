@@ -123,17 +123,20 @@ function renderCard(result) {
       })) : null));
   }
 
-  const found = result.facts.filter((f) => f.found || f.note);
-  if (found.length) {
+  if (result.facts.length) {
+    const rows = result.facts.map(factRow);
     card.append(h("details", {},
       h("summary", {}, `Extracted facts (${result.facts.length})`),
-      h("table", { class: "facts" },
-        h("tbody", {}, result.facts.map((f) => h("tr", {},
-          h("th", { scope: "row" }, f.name),
-          h("td", {}, f.found ? String(f.value) : "not established"),
-          h("td", {}, f.found ? `“${f.quote}”` : f.note || ""))))));
+      h("table", { class: "facts" }, h("tbody", {}, rows))));
   }
   return card;
+}
+
+function factRow(fact) {
+  return h("tr", {},
+    h("th", { scope: "row" }, fact.name),
+    h("td", {}, fact.found ? String(fact.value) : "not established"),
+    h("td", {}, fact.found ? `“${fact.quote}”` : (fact.note || "")));
 }
 
 function renderReport(report) {

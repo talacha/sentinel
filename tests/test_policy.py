@@ -89,6 +89,15 @@ def test_failed_check_downgrades_when_reference_not_confirmed(status):
     assert res.verdict is Verdict.REVISAR
 
 
+def test_unavailable_verification_surfaces_the_actual_reason():
+    external = ExternalVerification(
+        status=ExternalStatus.UNAVAILABLE, rationale="No TAVILY_API_KEY configured."
+    )
+    res = finalize(EXTERNAL_RULE, failed_check(), DOC, external)
+    assert res.verdict is Verdict.REVISAR
+    assert "unavailable" in res.rationale and "No TAVILY_API_KEY configured." in res.rationale
+
+
 def test_failed_check_without_any_external_result_is_revisar():
     res = finalize(EXTERNAL_RULE, failed_check(), DOC, None)
     assert res.verdict is Verdict.REVISAR and "not performed" in res.rationale

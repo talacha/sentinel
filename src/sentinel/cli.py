@@ -38,7 +38,9 @@ def render_report(report: ReviewReport) -> str:
             where = f"p.{e.page}" if e.page else "?"
             lines.append(f"    evidence ({where}): “{' '.join(e.quote.split())}”")
         if r.external:
-            lines.append(f"    external: {r.external.status.value}; query: {r.external.query}")
+            lines.append(f"    external: {r.external.status.value}. {r.external.rationale}")
+            if r.external.query:
+                lines.append(f"      query sent: {r.external.query}")
             for s in r.external.sources:
                 lines.append(f"      - [{s.role}] {s.url}")
         lines.append("")
@@ -76,6 +78,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    for noisy in ("httpx", "httpx2", "httpcore", "openai"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     try:
         return args.func(args, get_settings())
     except (ConfigError, VaultError, IngestError) as exc:

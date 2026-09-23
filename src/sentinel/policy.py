@@ -69,6 +69,11 @@ def finalize(
             notes.append(
                 "A public source contradicts the vault reference, which may be out of date."
             )
+        elif external.status is ExternalStatus.UNAVAILABLE:
+            verdict = Verdict.REVISAR
+            notes.append(
+                f"Public verification of the vault reference was unavailable. {external.rationale}"
+            )
         else:
             verdict = Verdict.REVISAR
             notes.append(
