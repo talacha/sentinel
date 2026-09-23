@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import Field
@@ -23,6 +24,13 @@ class Settings(BaseSettings):
     llm_api_key: str = "EMPTY"
     llm_reasoning: bool = True
     llm_timeout_seconds: float = 120.0
+    # Reasoning traces need headroom; NVIDIA suggests ~10k for Nemotron 3 Nano.
+    llm_max_tokens: int = Field(default=10_000, ge=256)
+    # NVIDIA recommends temperature 1.0 / top_p 1.0 when reasoning is on.
+    llm_temperature_reasoning: float = Field(default=1.0, ge=0, le=2)
+    # How to ask the server for JSON: "json_schema" (OpenAI/vLLM response_format),
+    # "guided_json" (vLLM extra_body), or "prompt" (no server-side enforcement).
+    llm_structured_mode: Literal["json_schema", "guided_json", "prompt"] = "json_schema"
 
     # Verification (optional).
     tavily_api_key: str | None = None
@@ -33,6 +41,7 @@ class Settings(BaseSettings):
     audit_log_path: Path = Path("audit/audit.jsonl")
     max_upload_mb: int = Field(default=20, ge=1)
     max_workers: int = Field(default=4, ge=1)
+    max_document_chars: int = Field(default=300_000, ge=1000)
 
     def require_llm(self) -> tuple[str, str]:
         """Return (base_url, model) or raise a clear error if unset."""

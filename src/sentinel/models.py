@@ -200,6 +200,7 @@ class ExtractedFact(BaseModel):
     value: Any | None = None
     found: bool = False
     quote: str | None = None
+    note: str | None = None  # why a fact counts as not found (missing, unverifiable, ...)
 
 
 class Source(BaseModel):
