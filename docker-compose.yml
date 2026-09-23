@@ -1,0 +1,16 @@
+# Sentinel Core app only. The model runs separately on your dedicated GPU (see deploy/README.md)
+# and is reached through LLM_BASE_URL in .env (copy .env.example to .env first).
+services:
+  sentinel:
+    build: .
+    image: sentinel-core:local
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      AUDIT_LOG_PATH: /app/audit/audit.jsonl
+      VAULTS_DIR: /app/vaults
+    volumes:
+      - ./vaults:/app/vaults:ro      # edit vaults without rebuilding
+      - ./audit:/app/audit           # audit log: hashes, verdicts, outbound queries; no document text
+    restart: unless-stopped

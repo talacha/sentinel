@@ -1,0 +1,78 @@
+id: insurance_life
+title: Life insurance underwriting
+description: >-
+  Illustrative underwriting policy for a life-insurance application file (Mexico, MXN).
+  Demo values only; not actual regulatory or underwriting guidance.
+language: en
+params:
+  jurisdiction: México
+
+rules:
+  - id: smoker-consistency
+    title: Tobacco declaration is consistent with lab results
+    severity: high
+    criterion: >-
+      The applicant's tobacco or nicotine declaration must not conflict with any laboratory
+      result in the file (for example a positive cotinine test contradicting a non-smoker
+      declaration). Cite both the declaration and the lab result.
+    on_fail: no_cumple
+
+  - id: income-multiple
+    title: Sum insured is proportionate to declared income
+    severity: medium
+    description: A sum insured above 15x annual income needs a documented justification.
+    facts:
+      - { name: sum_insured, type: number, description: "Total sum insured requested, in MXN" }
+      - { name: declared_income, type: number, description: "Applicant's declared ANNUAL income, in MXN" }
+      - name: justification
+        type: text
+        optional: true
+        description: "Any stated financial justification for a sum insured above normal income multiples"
+    check: "sum_insured <= 15 * declared_income or justification is not None"
+    on_fail: revisar
+
+  - id: enhanced-review-threshold
+    title: Enhanced financial review above the regulatory threshold
+    severity: high
+    description: >-
+      Applications at or above the reference threshold must include a completed financial
+      questionnaire. The threshold is a vault reference that can go stale, so a failure is
+      only asserted after it is confirmed against a public source.
+    references:
+      threshold_mxn: 2000000
+    facts:
+      - { name: sum_insured, type: number, description: "Total sum insured requested, in MXN" }
+      - name: financial_questionnaire_attached
+        type: boolean
+        optional: true
+        description: "Whether a completed financial questionnaire is included in the file"
+    check: "sum_insured < threshold_mxn or financial_questionnaire_attached == True"
+    on_fail: no_cumple
+    external_check:
+      statement: >-
+        A regulatory threshold of MXN 2,000,000 in sum insured, above which life insurance
+        applications require enhanced financial review, is currently in force in Mexico.
+      query_template: "umbral regulatorio revisión financiera suscripción seguro de vida {jurisdiction} {year} vigente"
+      allowed_domains: ["gob.mx"]
+
+  - id: beneficiary-designation
+    title: Beneficiaries are designated and shares total 100%
+    severity: medium
+    criterion: >-
+      At least one beneficiary is named with their relationship to the applicant, and the
+      stated percentage shares add up to exactly 100%.
+    on_fail: revisar
+
+  - id: signature-and-date
+    title: Application is signed and dated by the applicant
+    severity: medium
+    criterion: The application carries the applicant's signature and a signature date.
+    on_fail: no_cumple
+
+  - id: age-eligibility
+    title: Applicant age is within 18-70
+    severity: low
+    facts:
+      - { name: age, type: number, description: "Applicant's age in years, as stated in the application" }
+    check: "age >= 18 and age <= 70"
+    on_fail: no_cumple

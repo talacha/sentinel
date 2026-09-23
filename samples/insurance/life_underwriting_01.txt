@@ -1,0 +1,38 @@
+LIFE INSURANCE APPLICATION
+Aseguradora Demo, S.A. de C.V.
+(Synthetic sample: the person, organization, and data below are fictional.)
+
+SECTION 1 - APPLICANT
+Applicant name: Carlos Mendoza Rivera
+Date of birth: 1981-06-14
+Age: 45
+Occupation: Restaurant owner
+Annual income: MXN 150,000
+
+SECTION 2 - COVERAGE REQUESTED
+Sum insured requested: MXN 3,000,000
+Term: 20 years
+Purpose of coverage: Family protection
+Financial questionnaire attached: No
+
+SECTION 3 - HEALTH DECLARATION
+Height: 174 cm    Weight: 82 kg
+Tobacco use: No
+Do you currently use tobacco or nicotine products in any form? No
+Alcohol: Occasional
+Chronic conditions declared: None
+
+SECTION 4 - BENEFICIARIES
+Beneficiary 1: Laura Rivera Soto (spouse) - 60%
+Beneficiary 2: Diego Mendoza Rivera (son) - 40%
+
+SECTION 5 - LABORATORY RESULTS (collected 2026-07-28)
+Glucose (fasting): 92 mg/dL
+HbA1c: 5.4%
+Cotinine (urine): POSITIVE (412 ng/mL)
+HIV: Non-reactive
+
+SECTION 6 - DECLARATION AND SIGNATURE
+I declare that the information above is true and complete to the best of my knowledge.
+Applicant signature: Carlos Mendoza Rivera
+Date signed: 2026-08-02

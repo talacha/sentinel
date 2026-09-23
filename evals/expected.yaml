@@ -1,0 +1,94 @@
+# Expected outcomes for the synthetic samples.
+#
+# verdict: one verdict, or a list of acceptable verdicts. Rules that depend on what a live
+#          public search returns accept a list; a made-up reference (the insurance threshold)
+#          must NOT be confirmed by any real source, so it expects `revisar` only.
+# quotes:  verbatim passages the evidence is expected to cite (checked against the sample
+#          offline, and against the live report by evals/run_evals.py as a warning).
+
+cases:
+  - sample: samples/insurance/life_underwriting_01.txt
+    vault: insurance_life
+    expect:
+      smoker-consistency:
+        verdict: no_cumple
+        quotes: ["Tobacco use: No", "Cotinine (urine): POSITIVE"]
+      income-multiple:
+        verdict: revisar
+        quotes: ["Sum insured requested: MXN 3,000,000", "Annual income: MXN 150,000"]
+      enhanced-review-threshold:
+        verdict: revisar
+        quotes: ["Sum insured requested: MXN 3,000,000"]
+      beneficiary-designation:
+        verdict: cumple
+        quotes: ["Laura Rivera Soto (spouse) - 60%", "Diego Mendoza Rivera (son) - 40%"]
+      signature-and-date:
+        verdict: cumple
+        quotes: ["Applicant signature: Carlos Mendoza Rivera", "Date signed: 2026-08-02"]
+      age-eligibility:
+        verdict: cumple
+        quotes: ["Age: 45"]
+
+  - sample: samples/insurance/life_underwriting_02_clean.txt
+    vault: insurance_life
+    expect:
+      smoker-consistency:
+        verdict: cumple
+        quotes: ["Tobacco use: No", "Cotinine (urine): NEGATIVE"]
+      income-multiple:
+        verdict: cumple
+        quotes: ["Sum insured requested: MXN 900,000", "Annual income: MXN 720,000"]
+      enhanced-review-threshold:
+        verdict: cumple
+        quotes: ["Sum insured requested: MXN 900,000"]
+      beneficiary-designation:
+        verdict: cumple
+        quotes: ["Andres Herrera Duarte (brother) - 100%"]
+      signature-and-date:
+        verdict: cumple
+        quotes: ["Applicant signature: Sofia Herrera Duarte", "Date signed: 2026-08-20"]
+      age-eligibility:
+        verdict: cumple
+        quotes: ["Age: 35"]
+
+  - sample: samples/legal/msa_01.txt
+    vault: legal_contract
+    expect:
+      governing-law:
+        verdict: no_cumple
+        quotes: ["governed by the laws of the State of Texas"]
+      liability-cap:
+        verdict: no_cumple
+        quotes: ["Annual fees: USD 120,000", "shall not exceed USD 50,000"]
+      late-interest-cap:
+        verdict: [revisar, no_cumple]
+        quotes: ["Late payments accrue interest at 18% per annum"]
+      termination-notice:
+        verdict: revisar
+        quotes: ["upon 15 days' written notice"]
+      auto-renewal:
+        verdict: no_cumple
+        quotes: ["automatically renews for successive 24-month terms"]
+      confidentiality-survival:
+        verdict: cumple
+        quotes: ["survive for five (5) years after termination or expiry"]
+      data-protection:
+        verdict: revisar  # no clause exists: nothing to cite, so never a conclusive verdict
+
+  - sample: samples/health/patient_file_01.txt
+    vault: health_patient
+    expect:
+      consent-before-procedure:
+        verdict: cumple
+        quotes: ["signed by patient on 2026-05-01"]
+      allergy-medication-conflict:
+        verdict: no_cumple
+        quotes: ["Penicillin (rash, documented 2019)", "Amoxicillin 500 mg three times daily"]
+      vital-signs-at-admission:
+        verdict: revisar  # SpO2 is not recorded
+      date-consistency:
+        verdict: cumple
+        quotes: ["Admission date: 2026-05-02", "Discharge date: 2026-05-06"]
+      opioid-daily-dose:
+        verdict: [revisar, no_cumple]
+        quotes: ["Total daily MME: 180"]

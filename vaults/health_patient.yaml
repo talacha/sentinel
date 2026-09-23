@@ -1,0 +1,62 @@
+id: health_patient
+title: Patient file documentation review
+description: >-
+  Illustrative documentation and safety checks for an inpatient file. Demo values only; not
+  clinical guidance. Intended to run entirely inside a HIPAA-covered environment.
+language: en
+params:
+  jurisdiction: United States
+
+rules:
+  - id: consent-before-procedure
+    title: Informed consent is signed before the procedure
+    severity: high
+    criterion: >-
+      The file contains informed consent for the procedure that is signed and dated on or
+      before the procedure date.
+    on_fail: no_cumple
+
+  - id: allergy-medication-conflict
+    title: No prescribed medication conflicts with a documented allergy
+    severity: high
+    criterion: >-
+      No medication prescribed or administered in the file may be in the same drug class as,
+      or otherwise contraindicated by, an allergy documented in the file. Cite both the
+      allergy and the medication.
+    on_fail: no_cumple
+
+  - id: vital-signs-at-admission
+    title: Core vital signs are recorded at admission
+    severity: medium
+    criterion: >-
+      Blood pressure, heart rate, temperature, and oxygen saturation (SpO2) are all recorded
+      at admission.
+    on_fail: revisar
+
+  - id: date-consistency
+    title: Discharge is not before admission
+    severity: low
+    facts:
+      - { name: admission_date, type: date, description: "Admission date" }
+      - { name: discharge_date, type: date, description: "Discharge date" }
+    check: "discharge_date >= admission_date"
+    on_fail: no_cumple
+
+  - id: opioid-daily-dose
+    title: Daily opioid dose is within the reference limit
+    severity: high
+    description: >-
+      The limit is a vault reference that can go stale, so a failure is only asserted after
+      it is confirmed against a public source.
+    references:
+      mme_limit: 90
+    facts:
+      - { name: daily_mme, type: number, description: "Total daily morphine milligram equivalents (MME) stated in the file" }
+    check: "daily_mme <= mme_limit"
+    on_fail: no_cumple
+    external_check:
+      statement: >-
+        Current published US clinical guidance identifies 90 morphine milligram equivalents
+        (MME) per day as a limit that daily opioid doses should not exceed.
+      query_template: "CDC clinical practice guideline opioid prescribing daily morphine milligram equivalents {jurisdiction} {year}"
+      allowed_domains: ["cdc.gov", "nih.gov", "fda.gov"]
