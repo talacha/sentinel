@@ -15,6 +15,7 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 COPY ui ./ui
+COPY client ./client
 COPY vaults ./vaults
 
 RUN mkdir -p /app/audit && chown -R sentinel:sentinel /app/audit
