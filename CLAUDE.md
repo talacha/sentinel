@@ -13,6 +13,7 @@ uv run ruff check . && uv run ruff format --check .
 uv run sentinel vaults
 uv run sentinel review <file> --vault <vault_id> [--json]
 uv run uvicorn sentinel.api:app  # API + web UI on :8000
+uv run python scripts/stub_llm.py  # canned OpenAI-compatible server: no-GPU install check only
 uv run python evals/run_evals.py # LIVE model + samples vs evals/expected.yaml (needs .env)
 docker compose up --build        # app only; the model runs on your dedicated GPU
 ```
@@ -50,4 +51,6 @@ docker compose up --build        # app only; the model runs on your dedicated GP
 ## Layout
 
 `src/sentinel/` engine (models, vault, ingest, llm, extract, compare, verify, policy, engine,
-audit, api, cli) · `ui/` static UI · `vaults/` · `samples/` · `tests/` · `evals/` · `deploy/`.
+audit, api, cli) · `ui/` static UI · `vaults/` · `samples/` · `tests/` · `evals/` · `scripts/` ·
+`docs/running-locally.md` · `deploy/README.md` (Nebius; commands from vendor docs, not run on Nebius).
+The API/UI have no authentication: keep them on localhost/VPN or behind an authenticating proxy.

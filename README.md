@@ -117,6 +117,7 @@ Auditability is enforced in code (`src/sentinel/policy.py`), not left to the mod
 - **Scanned PDFs.** Text-based PDFs and plain text only. There is no OCR; image-only files are rejected with a clear error.
 - **Absence rules.** A `cumple`/`no_cumple` needs a quote, so "the document must not mention X" style rules resolve to `revisar` unless the vault phrases them around a passage that exists.
 - **Whole-document context.** Each rule sends the full document to the model (default cap 300,000 characters).
+- **No built-in authentication.** The API and UI have no login. Run them on localhost behind an SSH tunnel or VPN, or behind an authenticating reverse proxy with TLS; do not expose them directly. See the [security checklist](deploy/README.md#4-security-checklist).
 - **Vaults are demo data.** The shipped vaults are illustrative and are not regulatory, legal, or clinical guidance.
 
 ## Quickstart
@@ -131,7 +132,12 @@ uv run sentinel review samples/insurance/life_underwriting_01.txt --vault insura
 uv run uvicorn sentinel.api:app          # web UI + API at http://localhost:8000
 ```
 
-`LLM_BASE_URL` is required and has no default. In production point it at your dedicated vLLM endpoint on Nebius ([deploy/README.md](deploy/README.md) covers serving Nemotron 3 Nano). For development any OpenAI-compatible endpoint works, such as Nebius Token Factory or a local vLLM. Multi-tenant endpoints are for synthetic documents only.
+`LLM_BASE_URL` is required and has no default. In production point it at your dedicated vLLM endpoint on Nebius. For development any OpenAI-compatible endpoint works, such as Nebius Token Factory or a local vLLM. Multi-tenant endpoints are for synthetic documents only.
+
+**Guides**
+
+- **[Running locally](docs/running-locally.md)**: install and verify, a no-GPU check with a canned stub server (`scripts/stub_llm.py`), real model backends (SSH tunnel to your Nebius GPU, Token Factory for synthetic documents, local vLLM), Docker, and troubleshooting.
+- **[Deploying on Nebius](deploy/README.md)**: a GPU VM step by step (recommended), a Serverless AI endpoint, or a Token Factory dedicated endpoint, plus a security checklist and an explicit list of what is verified and what is not.
 
 Without `TAVILY_API_KEY`, rules that need external confirmation resolve to `revisar` and say why.
 
@@ -144,7 +150,7 @@ cp .env.example .env    # set LLM_BASE_URL etc.
 docker compose up --build
 ```
 
-Runs the app only (non-root, with a health check); the model stays on your dedicated GPU. `/healthz` reports which LLM host document text will be sent to.
+Runs the app only (non-root, with a health check); the model stays on your dedicated GPU. `/healthz` reports which LLM host document text will be sent to. From inside the container, reach a service on your machine with `host.docker.internal`; on Linux, make `./audit` writable by uid 10001 (details in [Running locally](docs/running-locally.md#6-run-it-in-docker)).
 
 ## Configuration
 
@@ -221,12 +227,12 @@ Vaults are validated on load: check expressions may only use declared names and 
 
 What has actually been run:
 
-- **Automated tests: 106 passing** (`uv run pytest`, no network). They cover ingest and quote location, the LLM client against a mocked HTTP transport (reasoning flag, structured-output fallback, `<think>` stripping, retry), fact extraction, check evaluation, the egress guard, the verdict policy (fabricated quotes, missing evidence, unconfirmed references), the engine, the audit log (asserted free of document text), the API and CLI, and the shipped vaults run through the engine against the samples.
+- **Automated tests: 107 passing** (`uv run pytest`, no network). They cover ingest and quote location, the LLM client against a mocked HTTP transport (reasoning flag, structured-output fallback, `<think>` stripping, retry), fact extraction, check evaluation, the egress guard, the verdict policy (fabricated quotes, missing evidence, unconfirmed references), the engine, the audit log (asserted free of document text), the API and CLI, and the shipped vaults run through the engine against the samples.
 - **Wire-level end to end** against a local stub OpenAI-compatible server: real HTTP client, API, and engine, in the container as well as locally, reproducing the three insurance outcomes above; the audit log contained none of the document's text.
 - **Web UI** driven in jsdom against the live server: vault selection, upload, review, verdict cards, evidence, and the external-verification block. It has not been checked visually in a browser.
 - **Docker image** builds, starts healthy, runs as non-root, and serves reviews.
 
-What has **not** been run: a live Nemotron 3 Nano 30B-A3B on a Nebius GPU, live Tavily searches, or the eval suite against a real model. Run `uv run python evals/run_evals.py` once `.env` points at a real endpoint; it compares live verdicts to `evals/expected.yaml` and exits non-zero on a mismatch.
+What has **not** been run: a live Nemotron 3 Nano 30B-A3B on a Nebius GPU, live Tavily searches, or the eval suite against a real model. The [Nebius deployment guide](deploy/README.md) is written from Nebius, vLLM, and Hugging Face documentation and has not been executed on Nebius. Run `uv run python evals/run_evals.py` once `.env` points at a real endpoint; it compares live verdicts to `evals/expected.yaml` and exits non-zero on a mismatch.
 
 ## Project layout
 
@@ -237,7 +243,9 @@ vaults/         insurance_life.yaml, legal_contract.yaml, health_patient.yaml
 samples/        synthetic documents (no real PII or PHI)
 tests/          unit, API, egress, and shipped-vault tests
 evals/          expected verdicts and a live-endpoint runner
-deploy/         serving Nemotron 3 Nano on vLLM on Nebius
+scripts/        stub_llm.py: canned OpenAI-compatible server for a no-GPU install check
+docs/           running-locally.md
+deploy/         deploying on Nebius: serving Nemotron 3 Nano with vLLM, security checklist
 ```
 
 Development: `uv run pytest`, `uv run ruff check . && uv run ruff format --check .`. Design invariants are in [CLAUDE.md](CLAUDE.md).
