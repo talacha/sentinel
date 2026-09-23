@@ -207,6 +207,7 @@ class Source(BaseModel):
     url: str
     title: str = ""
     snippet: str = ""
+    role: Literal["supports", "contradicts", "consulted"] = "consulted"
 
 
 class ExternalStatus(StrEnum):
