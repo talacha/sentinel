@@ -182,7 +182,7 @@ Vaults are mounted read-only from `./vaults`; restart the container after editin
 ## 7. Add your own vault or rules
 
 Copy a file in `vaults/`, change the `id`, and edit the rules (format in the main
-[README](../README.md#vaults)). Vaults are validated when they load, so a mistake fails with the
+[reference](reference.md#vaults)). Vaults are validated when they load, so a mistake fails with the
 file and field name:
 
 ```bash
