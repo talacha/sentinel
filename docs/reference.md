@@ -21,6 +21,11 @@ Set in the environment or in `.env` (copy `.env.example`). Run commands from the
 | `AUDIT_LOG_PATH` | `audit/audit.jsonl` | Where the audit log is appended. |
 | `MAX_UPLOAD_MB`, `MAX_DOCUMENT_CHARS` | `20`, `300000` | Upload size and extracted-text limits. |
 | `MAX_WORKERS` | `4` | Rules reviewed concurrently. |
+| `ACCESS_USER`, `ACCESS_PASSWORD` | `demo`, unset | Visitor login (HTTP Basic) for every page and API call except a minimal `/healthz`. Unset means no login. |
+| `MAX_REVIEWS_PER_HOUR` | `0` | Global cap on reviews across all visitors (`429` when reached). `0` = unlimited. |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | `admin`, unset | Super-admin login for `/status` and `/admin`. Unset disables the console. Environment only; never editable at runtime. |
+| `CORS_ALLOW_ORIGINS` | empty | Comma-separated browser origins allowed to call the API (only needed when the client app is hosted elsewhere). |
+| `SENTINEL_DOMAIN` | unset | Read by `deploy/public` (Caddy), not by the app. |
 
 ## Command line
 
@@ -28,9 +33,19 @@ Set in the environment or in `.env` (copy `.env.example`). Run commands from the
 uv run sentinel vaults                                       # list vaults
 uv run sentinel review <file> --vault <id>                   # human-readable report
 uv run sentinel review <file> --vault <id> --json > report.json
+uv run sentinel preflight [--env-file PATH] [--offline] [--public]   # validate configuration
 ```
 
-Exit codes: `0` every rule `cumple`, `2` at least one `no_cumple` or `revisar`, `1` error.
+Exit codes for `review`: `0` every rule `cumple`, `2` at least one `no_cumple` or `revisar`, `1` error.
+For `preflight`: `0` ready (warnings allowed), `1` at least one failed check.
+
+**`sentinel preflight`** checks that required values are present and not placeholders, that keys
+have no stray whitespace, that `.env` is not world-readable, that no key is misspelled, and that
+vaults and the audit path work. Unless `--offline`, it also proves the configuration works: it
+lists the endpoint's models with your key, checks that `LLM_MODEL` is one of them, makes a real
+JSON call in both modes Sentinel uses (extraction and reasoning), and runs one Tavily search
+(a few tokens and one search credit). With `--public` it also requires a visitor login, a usage
+cap, and a domain. It never prints secrets.
 
 ## API
 
@@ -39,7 +54,10 @@ Exit codes: `0` every rule `cumple`, `2` at least one `no_cumple` or `revisar`, 
 | `POST /v1/reviews` | Multipart form: `file` (PDF or text) and `vault_id`. Returns the JSON report. |
 | `GET /v1/vaults` | Vaults and their rules. |
 | `GET /healthz` | Status, LLM host and model, whether search is configured. Never returns secrets. |
-| `GET /` | The web UI, where people upload documents. |
+| `GET /` | The built-in web UI, where people upload documents. |
+| `GET /app/` | The client-facing app (see [`client/`](../client/README.md)). |
+| `GET /status`, `GET /admin` | The admin console page: one shell, two views. Contains no data; see below. |
+| `/v1/admin/*` | The console's API. Admin login required; see below. |
 
 ```bash
 curl -F vault_id=insurance_life -F file=@samples/insurance/life_underwriting_01.txt \
@@ -47,9 +65,12 @@ curl -F vault_id=insurance_life -F file=@samples/insurance/life_underwriting_01.
 ```
 
 Errors: `404` unknown vault, `400` unreadable or empty document (for example an image-only PDF),
-`413` upload over `MAX_UPLOAD_MB`, `503` no LLM endpoint configured.
+`413` upload over `MAX_UPLOAD_MB`, `503` no LLM endpoint configured, `401` login required,
+`429` review cap reached (with `Retry-After`).
 
-The API and UI have no authentication; see the
+By default the API has no login. Set `ACCESS_PASSWORD` to require HTTP Basic credentials on every
+page and call except a minimal `/healthz` (which reports only `status`, `auth_required`, and
+`max_upload_mb` to anonymous callers). See the
 [security checklist](../deploy/README.md#4-security-checklist).
 
 ### The report
@@ -66,6 +87,40 @@ The same JSON comes from `--json` and `POST /v1/reviews`:
   - `external` (only when a public source was consulted): `query` (the only text that left the
     perimeter), `status` (`confirmed`, `contradicted`, `unclear`, `unavailable`), `rationale`, and
     `sources[]` with `url` and `role` (`supports`, `contradicts`, `consulted`).
+
+## Admin console: `/status` and `/admin`
+
+One page, two views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
+(12+ characters, different from `ACCESS_PASSWORD`); without it the pages and `/v1/admin/*`
+refuse to work.
+
+**`/status`** runs the same checks as `sentinel preflight`, against the settings the service is
+actually using. It shows whether each key and model is valid, grouped by Model, Search, Access, and
+Storage. *Refresh* runs the static checks (free, instant); *Run live checks* also contacts the
+model endpoint and Tavily to prove the keys work and the model id exists (a few tokens and one
+search; one live run at a time).
+
+**`/admin`** edits settings at runtime: the model endpoint, model id and its parameters, the
+Tavily key, limits, the review cap, and the visitor login. A change is validated like `.env`
+(a batch with any invalid field applies nothing), takes effect immediately, is saved to
+`overrides.json` next to the audit log with owner-only permissions, and survives a restart.
+"Reset to environment value" removes an override. Not editable at runtime: file paths, CORS
+origins, and the admin credentials themselves.
+
+Security model:
+
+- **Secrets are write-only.** API keys and passwords are never returned by the API, shown on the
+  page, or written to the audit log; the form shows only "set (N chars)".
+- **Explicit login, not a browser-cached one.** The pages are data-free shells; they sign in with
+  an `Authorization` header held in memory, so a page on another site cannot ride on a saved
+  login. Every call also needs an `X-Sentinel-Admin: 1` header, and writes must be JSON.
+- **Brute-force lockout.** Ten wrong admin passwords in five minutes lock the admin API for the
+  remainder of the window, even against the correct password. This is deliberately global and
+  applies to the admin login only, so it cannot be used to lock visitors out.
+- **Audited.** Each change appends a `config_change` event to the audit log with who, which
+  fields, and non-secret values (for the endpoint URL, only the host).
+- **Powerful by design.** An admin can change where documents are sent. Treat `ADMIN_PASSWORD`
+  like a root password, and check `/status` after any change.
 
 ## Vaults
 

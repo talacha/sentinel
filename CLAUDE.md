@@ -34,6 +34,13 @@ docker compose up --build        # app only; the model runs on your dedicated GP
 - **No default LLM endpoint.** `LLM_BASE_URL` must be set explicitly.
 - The engine is domain-agnostic: domain knowledge lives only in `vaults/*.yaml`.
 - The audit log never contains document text, quotes, filenames, or rationales.
+- **Secrets are write-only.** API keys and passwords never appear in any API response, page,
+  status/preflight output, error message, or the audit log (`preflight.redact`, `runtime.describe`).
+  Tests assert this; keep them passing when adding fields.
+- The admin console (`/status`, `/admin`, `/v1/admin/*`) needs `ADMIN_PASSWORD`; changes are
+  validated atomically, persisted 0600 (`runtime.py`), audited by field name, and require the
+  `X-Sentinel-Admin` header. File paths, CORS origins, and admin credentials are not editable.
+- Model ids must match the endpoint's catalog exactly: use `sentinel preflight` to check.
 
 ## Gotchas
 
@@ -53,4 +60,5 @@ docker compose up --build        # app only; the model runs on your dedicated GP
 `src/sentinel/` engine (models, vault, ingest, llm, extract, compare, verify, policy, engine,
 audit, api, cli) · `ui/` static UI · `vaults/` · `samples/` · `tests/` · `evals/` · `scripts/` ·
 `docs/running-locally.md` · `deploy/README.md` (Nebius; commands from vendor docs, not run on Nebius).
-The API/UI have no authentication: keep them on localhost/VPN or behind an authenticating proxy.
+Login is optional and off by default (`ACCESS_PASSWORD`): without it keep the app on localhost/VPN.
+Public deployments use `deploy/public` (Caddy + HTTPS) with a visitor login and a review cap.

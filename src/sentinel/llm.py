@@ -137,6 +137,11 @@ class OpenAICompatibleLLM:
                 )
                 self._mode = "prompt"
                 resp = self._request(messages, schema_json, reasoning)
+        except openai.NotFoundError as exc:
+            raise LLMError(
+                f"LLM request failed: the endpoint has no model named {self.model!r} "
+                f"(check LLM_MODEL; ids are case-sensitive; run `sentinel preflight`). {exc}"
+            ) from exc
         except openai.OpenAIError as exc:
             raise LLMError(f"LLM request failed: {exc}") from exc
 

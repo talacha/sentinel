@@ -106,6 +106,18 @@ def test_persistently_invalid_output_raises():
     assert len(seen) == 2
 
 
+def test_unknown_model_id_says_so_and_points_at_the_fix():
+    # The exact 404 body Nebius Token Factory returns for a model id that is not in its catalog.
+    body = {"detail": "The model `nvidia/nemotron-3-nano` does not exist."}
+    llm, seen = make_llm(lambda n, b: httpx.Response(404, json=body))
+    with pytest.raises(LLMError) as err:
+        llm.complete_json(system="s", user="u", schema=Out)
+    message = str(err.value)
+    assert "no model named 'model'" in message
+    assert "LLM_MODEL" in message and "case-sensitive" in message and "preflight" in message
+    assert len(seen) == 1  # a 404 is not retried
+
+
 def test_truncated_reasoning_gives_actionable_error():
     llm, _ = make_llm(lambda n, body: completion("", finish_reason="length"))
     with pytest.raises(LLMError, match="LLM_MAX_TOKENS"):

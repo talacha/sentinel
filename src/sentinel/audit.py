@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .models import ReviewReport
@@ -50,7 +51,15 @@ class AuditLog:
         self._lock = threading.Lock()
 
     def record(self, report: ReviewReport) -> None:
-        line = json.dumps(audit_record(report), ensure_ascii=False, separators=(",", ":"))
+        self._append(audit_record(report))
+
+    def event(self, event: str, **fields: object) -> None:
+        """Append a non-review event (for example a configuration change). Callers must never
+        pass secrets or document text."""
+        self._append({"ts": datetime.now(UTC).isoformat(), "event": event, **fields})
+
+    def _append(self, record: dict) -> None:
+        line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as fh:

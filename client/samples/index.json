@@ -1,0 +1,26 @@
+[
+  {
+    "file": "life_underwriting_01.txt",
+    "vault": "insurance_life",
+    "label": "Life insurance application",
+    "note": "has issues"
+  },
+  {
+    "file": "life_underwriting_02_clean.txt",
+    "vault": "insurance_life",
+    "label": "Life insurance application",
+    "note": "clean file"
+  },
+  {
+    "file": "msa_01.txt",
+    "vault": "legal_contract",
+    "label": "Vendor services agreement",
+    "note": ""
+  },
+  {
+    "file": "patient_file_01.txt",
+    "vault": "health_patient",
+    "label": "Inpatient record",
+    "note": ""
+  }
+]

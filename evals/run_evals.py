@@ -1,6 +1,6 @@
 """Run the sample documents against a LIVE model and compare with evals/expected.yaml.
 
-    uv run python evals/run_evals.py [--case msa_01] [--json]
+    uv run python evals/run_evals.py [--case msa_01] [--env-file PATH]
 
 Needs LLM_BASE_URL / LLM_MODEL (and optionally TAVILY_API_KEY) in the environment or .env.
 Exit code is 1 if any verdict is outside the accepted set; missing expected quotes are warnings
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from sentinel.config import ConfigError, get_settings
+from sentinel.config import ConfigError, Settings, get_settings
 from sentinel.engine import Engine
 from sentinel.ingest import ingest_path
 from sentinel.vault import VaultRegistry
@@ -35,6 +35,9 @@ def norm(text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--case", help="only run cases whose sample path contains this text")
+    parser.add_argument(
+        "--env-file", type=Path, help="read settings from this file (default ./.env)"
+    )
     args = parser.parse_args()
 
     cases = yaml.safe_load((ROOT / "evals" / "expected.yaml").read_text())["cases"]
@@ -44,7 +47,7 @@ def main() -> int:
         print("no matching cases", file=sys.stderr)
         return 1
 
-    settings = get_settings()
+    settings = Settings(_env_file=args.env_file) if args.env_file else get_settings()
     try:
         engine = Engine.from_settings(settings)
     except ConfigError as exc:

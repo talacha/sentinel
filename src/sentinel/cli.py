@@ -1,6 +1,7 @@
-"""Command line: `sentinel review <file> --vault <id>` and `sentinel vaults`.
+"""Command line: `sentinel review <file> --vault <id>`, `sentinel vaults`, `sentinel preflight`.
 
-Exit codes: 0 every rule `cumple`; 2 at least one `no_cumple` or `revisar`; 1 error.
+Exit codes for `review`: 0 every rule `cumple`; 2 at least one `no_cumple` or `revisar`; 1 error.
+For `preflight`: 0 ready (warnings allowed); 1 at least one failed check.
 """
 
 from __future__ import annotations
@@ -10,6 +11,10 @@ import logging
 import sys
 from pathlib import Path
 
+from dotenv import dotenv_values
+from pydantic import ValidationError
+
+from . import preflight
 from .config import ConfigError, Settings, get_settings
 from .engine import Engine
 from .ingest import IngestError, ingest_path
@@ -62,10 +67,45 @@ def _cmd_vaults(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
+def _cmd_preflight(args: argparse.Namespace) -> int:
+    """Validate configuration. Runs before normal settings loading so that a broken `.env` is
+    reported as a failed check rather than a traceback."""
+    env_file: Path = args.env_file
+    exists = env_file.is_file()
+    raw = dict(dotenv_values(env_file)) if exists else {}
+    try:
+        settings = Settings(_env_file=env_file if exists else None)
+    except ValidationError as exc:
+        for err in exc.errors():  # location and message only: never echo the offending value
+            field = ".".join(str(p) for p in err["loc"])
+            print(f"[FAIL] {field}  {err['msg']}")
+        print("\nNOT READY: fix the FAIL lines above")
+        return 1
+    report = preflight.run(
+        settings,
+        raw,
+        env_file if exists else None,
+        live=not args.offline,
+        public=args.public,
+    )
+    print(preflight.render(report))
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sentinel", description="Self-hosted compliance checker.")
     parser.add_argument("--vaults-dir", type=Path, help="directory of vault YAML files")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    pre = sub.add_parser(
+        "preflight",
+        help="validate .env and, unless --offline, test the model endpoint and Tavily",
+    )
+    pre.add_argument("--env-file", type=Path, default=Path(".env"), help="default: ./.env")
+    pre.add_argument("--offline", action="store_true", help="static checks only; no network calls")
+    pre.add_argument(
+        "--public", action="store_true", help="also require login, a usage cap, and a domain"
+    )
 
     review = sub.add_parser("review", help="review a document against a vault")
     review.add_argument("file", type=Path)
@@ -80,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     for noisy in ("httpx", "httpx2", "httpcore", "openai"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    if args.command == "preflight":
+        return _cmd_preflight(args)
     try:
         return args.func(args, get_settings())
     except (ConfigError, VaultError, IngestError) as exc:

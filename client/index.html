@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sentinel: document review</title>
+  <meta name="description" content="Check a document against your policy, rule by rule, with the exact passage behind every answer.">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="wrap bar-inner">
+      <span class="brand"><span class="mark" aria-hidden="true"></span>Sentinel</span>
+      <p class="privacy" id="privacy" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">Review a document against your policy</h1>
+      <p>Sentinel checks it rule by rule and shows the exact passage behind every answer. When it can't be sure, it says <strong>needs review</strong> instead of guessing.</p>
+    </section>
+
+    <p id="error" class="alert" role="alert" hidden></p>
+
+    <form id="form" class="card no-print" autocomplete="off" novalidate>
+      <fieldset id="vault-field">
+        <legend><span class="step">1</span> What are we reviewing?</legend>
+        <div id="vaults" class="choices" role="radiogroup"><p class="muted">Loading review types…</p></div>
+      </fieldset>
+
+      <fieldset>
+        <legend><span class="step">2</span> Add the document</legend>
+        <label class="drop" id="drop" for="file">
+          <input id="file" type="file" accept=".pdf,.txt,.text,.md,application/pdf,text/plain">
+          <span class="drop-title" id="drop-title">Drop a PDF or text file here, or click to choose</span>
+          <span class="drop-hint" id="drop-hint">Text-based PDFs and plain text. Up to <span id="max-mb">20</span> MB.</span>
+        </label>
+        <div id="samples" class="samples" hidden>
+          <span class="muted">No file handy? Try a made-up one:</span>
+          <span id="sample-buttons"></span>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" id="run" class="primary" disabled>Review document</button>
+        <span id="progress" class="muted" role="status" aria-live="polite"></span>
+      </div>
+      <div class="bar-progress" id="bar" hidden><span></span></div>
+    </form>
+
+    <section id="results" hidden tabindex="-1" aria-labelledby="results-title">
+      <div class="banner" id="banner">
+        <div>
+          <h2 id="results-title"></h2>
+          <p id="results-sub"></p>
+        </div>
+        <ul class="counts" id="counts"></ul>
+      </div>
+      <p class="meta" id="meta"></p>
+      <div class="toolbar no-print">
+        <button type="button" id="download" class="secondary">Download report (JSON)</button>
+        <button type="button" id="print" class="secondary">Print or save as PDF</button>
+        <button type="button" id="again" class="secondary">Review another document</button>
+      </div>
+      <div id="groups"></div>
+      <p class="note">
+        <strong>How to read this.</strong> <em>Passes</em> and <em>Fails</em> always come with quoted evidence from
+        your document. <em>Needs review</em> means the evidence was missing, conflicting, or could not be verified,
+        so a person should decide. Every quote is checked against the document before it is shown.
+      </p>
+    </section>
+  </main>
+
+  <footer class="wrap foot no-print">
+    <p>Sentinel Core. Demo policies are illustrative and are not regulatory, legal, or clinical advice.</p>
+  </footer>
+
+  <dialog id="login" aria-labelledby="login-title">
+    <form method="dialog" id="login-form">
+      <h2 id="login-title">Sign in</h2>
+      <p class="muted" id="login-msg">This service asks for a username and password.</p>
+      <label>Username <input id="login-user" name="user" autocomplete="username" required></label>
+      <label>Password <input id="login-pass" name="pass" type="password" autocomplete="current-password" required></label>
+      <div class="actions">
+        <button type="submit" class="primary" value="ok">Sign in</button>
+        <button type="button" id="login-cancel" class="secondary">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

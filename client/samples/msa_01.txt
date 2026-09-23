@@ -1,0 +1,34 @@
+MASTER SERVICES AGREEMENT
+(Synthetic sample: the parties and terms below are fictional.)
+
+This Master Services Agreement (the "Agreement") is entered into between Northwind Logistics Ltd.
+("Customer") and Helio Cloud Services Inc. ("Provider").
+
+1. SERVICES AND FEES
+Provider will supply the hosted logistics-planning platform described in Schedule A.
+Annual fees: USD 120,000, invoiced quarterly in advance.
+
+2. PAYMENT
+Invoices are due within 30 days. Late payments accrue interest at 18% per annum until paid.
+
+3. TERM AND RENEWAL
+Initial Term: 24 months from the Effective Date. This Agreement automatically renews for
+successive 24-month terms unless either party gives written notice of non-renewal at least
+10 days before the end of the then-current term.
+
+4. TERMINATION
+Either party may terminate this Agreement for convenience upon 15 days' written notice.
+
+5. LIMITATION OF LIABILITY
+Provider's total aggregate liability arising out of this Agreement shall not exceed USD 50,000.
+
+6. CONFIDENTIALITY
+Each party shall keep the other's Confidential Information secret. These obligations survive
+for five (5) years after termination or expiry of this Agreement.
+
+7. GOVERNING LAW
+This Agreement is governed by the laws of the State of Texas, without regard to conflict-of-laws
+principles.
+
+8. GENERAL
+This Agreement is the entire agreement between the parties and may be amended only in writing.

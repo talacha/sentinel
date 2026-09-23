@@ -1,0 +1,37 @@
+LIFE INSURANCE APPLICATION
+Aseguradora Demo, S.A. de C.V.
+(Synthetic sample: the person, organization, and data below are fictional.)
+
+SECTION 1 - APPLICANT
+Applicant name: Sofia Herrera Duarte
+Date of birth: 1990-11-03
+Age: 35
+Occupation: Software engineer
+Annual income: MXN 720,000
+
+SECTION 2 - COVERAGE REQUESTED
+Sum insured requested: MXN 900,000
+Term: 15 years
+Purpose of coverage: Mortgage protection
+Financial questionnaire attached: No
+
+SECTION 3 - HEALTH DECLARATION
+Height: 165 cm    Weight: 61 kg
+Tobacco use: No
+Do you currently use tobacco or nicotine products in any form? No
+Alcohol: None
+Chronic conditions declared: None
+
+SECTION 4 - BENEFICIARIES
+Beneficiary 1: Andres Herrera Duarte (brother) - 100%
+
+SECTION 5 - LABORATORY RESULTS (collected 2026-08-14)
+Glucose (fasting): 88 mg/dL
+HbA1c: 5.1%
+Cotinine (urine): NEGATIVE (<10 ng/mL)
+HIV: Non-reactive
+
+SECTION 6 - DECLARATION AND SIGNATURE
+I declare that the information above is true and complete to the best of my knowledge.
+Applicant signature: Sofia Herrera Duarte
+Date signed: 2026-08-20

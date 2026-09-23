@@ -1,0 +1,42 @@
+# Public deployment: Sentinel behind Caddy, which gets and renews a TLS certificate automatically.
+#
+#   docker compose --env-file ../../.env -f docker-compose.yml up -d --build   (from deploy/public)
+#
+# Only Caddy is published (ports 80 and 443). The app itself is reachable only through it. See
+# docs/hackathon.md for the full runbook, and run `sentinel preflight --public` first.
+services:
+  sentinel:
+    build: ../..
+    image: sentinel-core:local
+    env_file: ../../.env
+    environment:
+      AUDIT_LOG_PATH: /app/audit/audit.jsonl
+      VAULTS_DIR: /app/vaults
+    volumes:
+      - ../../vaults:/app/vaults:ro
+      # Audit log and saved admin overrides live here. A named volume keeps the right owner on
+      # Linux, unlike a bind mount.
+      - sentinel-data:/app/audit
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - sentinel
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SENTINEL_DOMAIN: ${SENTINEL_DOMAIN:?set SENTINEL_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  sentinel-data:
+  caddy-data:
+  caddy-config:
