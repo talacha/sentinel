@@ -4,7 +4,7 @@
 
 It does the review a compliance analyst does by hand today: an insurance application, a contract, or a patient file goes in, and one verdict per rule comes out, each with the specific evidence behind it.
 
-> **Status: v0.1, working end to end.** Verified against a live Nemotron 3 Nano through Nebius Token Factory and live Tavily searches (24 of 24 sample verdicts as expected). Not yet deployed publicly, and the repository still needs an open-source license before the hackathon submission. See [Status](#status) and the [hackathon runbook](docs/hackathon.md).
+> **Status: v0.1, working end to end.** Verified against a live Nemotron 3 Nano through Nebius Token Factory and live Tavily searches (24 of 24 sample verdicts as expected). Not yet deployed publicly. MIT licensed. See [Status](#status) and the [hackathon runbook](docs/hackathon.md).
 
 ## How it works
 
@@ -184,6 +184,10 @@ deploy/         deploying on Nebius; deploy/public: the app behind Caddy with HT
 ```
 
 Development: `uv run pytest` and `uv run ruff check .`. Design invariants are in [CLAUDE.md](CLAUDE.md).
+
+## License
+
+[MIT](LICENSE), Copyright (c) 2026 Sentinel PLD.
 
 ## Built with
 

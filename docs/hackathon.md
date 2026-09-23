@@ -27,7 +27,7 @@ the Idea.
 | A URL to a working demo. A private one is allowed if you include login credentials in the testing instructions, and it must be free for the judges to use. | **To do.** Deploy with the runbook below; give judges the visitor login. |
 | A public demo video under 3 minutes on YouTube, with audio explaining how you used Token Factory and Nemotron. | **To do.** A script is in [deploy/README.md](../deploy/README.md#7-demo-checklist). |
 | A public code repository with all the source and setup instructions. | **Done.** The repository is public. |
-| An open-source license file (Apache 2.0, MIT, or MPL 2.0). | **Missing.** The repository has no `LICENSE` file, so it does not meet the rule yet. Pick a license and add the file. |
+| An open-source license file (Apache 2.0, MIT, or MPL 2.0). | **Done.** [`LICENSE`](../LICENSE) is MIT, Copyright (c) 2026 Sentinel PLD. Confirm GitHub shows "MIT" on the repository page once it is on `main`. |
 | README highlights Nemotron and Token Factory usage. | **Partly.** Update the README's "How it works" once the demo runs on Token Factory. |
 | No personal data in the submission. | **Done.** Every sample is synthetic. Tell judges not to upload real data. |
 | Submission window closes **2026-10-30, 10:00 AM PT**. | Judging is December 1 to 15; winners are announced January 11, 2027. |
