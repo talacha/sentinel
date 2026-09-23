@@ -73,7 +73,7 @@ something breaks, use uv or Docker.
 ### Check the install
 
 ```bash
-uv run pytest             # ~107 tests, no network, a few seconds (pip: python -m pytest)
+uv run pytest             # ~218 tests, no network, a few seconds (pip: python -m pytest)
 uv run sentinel vaults    # (pip: sentinel vaults)
 ```
 
@@ -153,15 +153,21 @@ the ones in `samples/`, never with client data.
 # .env
 LLM_BASE_URL=https://api.tokenfactory.nebius.com/v1/
 LLM_API_KEY=<your Token Factory key>
-LLM_MODEL=<model id>
+LLM_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B
 ```
 
-Find the Nemotron 3 Nano model id from your own catalog rather than guessing:
+The model id must match the catalog exactly, capitalization included. The short form
+`nvidia/nemotron-3-nano`, which other providers use, is **not** in Token Factory's catalog and
+fails with `404 The model ... does not exist`. This id was verified against a live catalog on
+2026-09-23, but catalogs change, so list yours:
 
 ```bash
 curl -s https://api.tokenfactory.nebius.com/v1/models \
   -H "Authorization: Bearer $LLM_API_KEY" | jq -r '.data[].id' | grep -i nemotron
 ```
+
+Then run `uv run sentinel preflight`. It checks that the key works, that the model id is served,
+and that a real request returns valid JSON, before you find out in the middle of a review.
 
 If the server rejects `response_format`, Sentinel logs a warning and falls back to prompt-only
 JSON. Every reply is still validated locally. Set `LLM_STRUCTURED_MODE=prompt` to skip the
@@ -251,6 +257,7 @@ verdict without a verifiable quote becomes `revisar`. Keep real client data out 
 | Symptom | Cause and fix |
 | --- | --- |
 | `503 Missing required setting(s): LLM_BASE_URL, LLM_MODEL` | No endpoint configured. Set both in `.env` or the environment. |
+| Every rule is `revisar` with "the endpoint has no model named ..." (a 404) | The model id in `LLM_MODEL` is not in the endpoint's catalog. Ids are case-sensitive: on Token Factory use `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`, not `nvidia/nemotron-3-nano`. Run `uv run sentinel preflight` (or open `/status` and run the live checks) for the list of real ids. Restart after editing `.env`; the admin console can change it without a restart. |
 | Every rule is `revisar` with "Automated review of this rule failed" | The model call failed. The rationale has the error; check `LLM_BASE_URL`, the key, and that the server is up (`curl $LLM_BASE_URL/models`). |
 | "LLM returned an empty reply (output truncated during reasoning; raise LLM_MAX_TOKENS)" | Reasoning consumed the token budget. Raise `LLM_MAX_TOKENS`. |
 | Warning: "server rejected structured output mode" | The endpoint does not support `response_format`. Sentinel switched to prompt-only JSON; nothing to do. |

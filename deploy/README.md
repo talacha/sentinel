@@ -319,9 +319,15 @@ about "expected evidence not cited" mean the model quoted a different passage, w
 
 ## 4. Security checklist
 
-- **Sentinel has no built-in authentication.** Anyone who can reach its port can upload documents
-  and read reports. Keep it on `127.0.0.1` behind an SSH tunnel or a VPN, or put an authenticating
-  reverse proxy with TLS in front of it. Never bind it to a public interface as is.
+- **The login is off by default.** Without `ACCESS_PASSWORD`, anyone who can reach the port can
+  upload documents and read reports: keep it on `127.0.0.1` behind an SSH tunnel or a VPN. To
+  expose it publicly, set `ACCESS_PASSWORD` (12+ characters), `MAX_REVIEWS_PER_HOUR`, and serve it
+  over HTTPS: `deploy/public` does this with Caddy (see the
+  [hackathon runbook](../docs/hackathon.md#going-live-on-the-nebius-stack)). Run
+  `sentinel preflight --public` first.
+- **The admin console can redirect your documents.** `/admin` (only enabled by `ADMIN_PASSWORD`,
+  12+ characters, different from `ACCESS_PASSWORD`) can change the model endpoint. Treat it like a
+  root login and check `/status` after any change.
 - Keep the model server unreachable from outside: vLLM on `127.0.0.1` (path A), always with an
   API key, private endpoint for path B.
 - Restrict SSH to known addresses; use key-only login.
@@ -357,7 +363,7 @@ about "expected evidence not cited" mean the model quoted a different passage, w
 | Whether the 60 GB model plus `--max-model-len 262144` fits one H100 with `--max-num-seqs 8` | The vLLM recipe uses these values for H100/H200; not run |
 | Serverless AI `nebius ai endpoint create` for Nemotron | Adapted from vLLM's Nebius docs (which serve a small Qwen model); not run |
 | Token Factory dedicated endpoints: API paths | From Nebius docs; whether Nemotron 3 Nano is a template is unknown |
-| Sentinel against the real model, real Tavily, and `evals/run_evals.py` | **Never run.** This is the first thing to do after deploying |
+| Sentinel against a real model, real Tavily, and `evals/run_evals.py` | **Verified 2026-09-23** against Nemotron 3 Nano through Nebius Token Factory (24 of 24 verdicts as expected). **Not** verified against a self-hosted vLLM on a Nebius GPU: run the evals there after deploying |
 | Sentinel app, API, UI, Docker image | Tested locally against a stub model (see the main README) |
 
 ## 7. Demo checklist
@@ -397,11 +403,11 @@ first:
 4. Show `/healthz` (which host the document went to) and `audit/audit.jsonl` (hashes, verdicts,
    queries, no document text).
 
-**If judges need a link they can open.** Only do this if the event requires it. The app has no
-login, so put an authenticating reverse proxy with TLS (for example Caddy or nginx with basic
-auth) in front of it, keep Sentinel itself on `127.0.0.1`, expose only the proxy, use synthetic
-documents only, and remove it when the judging window ends. Otherwise share a recorded video or
-the repository instead.
+**If judges need a link they can open.** The Nebius hackathon rules require a working demo URL
+(a login is allowed if you supply the credentials). Use `deploy/public`: the app behind Caddy
+with HTTPS, a visitor login, and a review cap, with synthetic documents only. The full runbook,
+including the Devpost testing instructions, is in [docs/hackathon.md](../docs/hackathon.md).
+Remove it when the judging window ends.
 
 **Do not**
 
