@@ -19,3 +19,10 @@
 
 	reverse_proxy sentinel:8000
 }
+
+# www.<domain> redirects to the main site. This needs its own DNS record (a CNAME `www` pointing at
+# the domain is enough): Caddy also gets a certificate for this name, and if it does not resolve to
+# this machine that request fails and is retried in the background. The main site is unaffected.
+www.{$SENTINEL_DOMAIN} {
+	redir https://{$SENTINEL_DOMAIN}{uri} permanent
+}

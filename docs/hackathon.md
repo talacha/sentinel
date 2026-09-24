@@ -62,8 +62,13 @@ documents, but say so plainly in the video and README rather than calling it sin
    network settings. I could not verify Nebius's exact console steps or CLI names for a CPU VM;
    the GPU VM commands in the deploy guide show the pattern.
 
-3. **Point a domain at it.** Create an `A` record for your hostname pointing at the VM's public IP.
-   Caddy needs this to get a certificate. If you have no domain, a name like
+3. **Point a domain at it.** Create an `A` record for your hostname pointing at the VM's public IP,
+   and remove any registrar redirect or parking record on the same host (at Namecheap, a "URL
+   Redirect Record" overrides an A record). Optionally add a `CNAME` for `www` pointing at the
+   domain: Caddy redirects `www` to the main site. Do not add an `AAAA` record (the VM is IPv4
+   only), and leave any MX records alone. Caddy needs the `A` record to get a certificate. Check
+   it with `dig +short A <your-domain> @1.1.1.1`; a resolver may serve the old record until its
+   cache expires, up to the old record's TTL. If you have no domain, a name like
    `<ip-with-dashes>.sslip.io` resolves to that IP; that is a common trick that I have not tried
    with Caddy here.
 
