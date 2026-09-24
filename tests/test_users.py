@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -881,3 +882,118 @@ def test_a_redirect_can_only_ever_point_inside_the_console(tmp_path):
         resp = client.get(old, follow_redirects=False)
         assert resp.headers["location"].startswith("/admin/vaults/")
         assert not resp.headers["location"].startswith("//")
+
+
+# --------------------------------------------------------------------------- hardening
+
+
+def test_a_reset_ends_the_old_password_even_for_a_check_already_under_way(tmp_path, monkeypatch):
+    store, _ = seeded(tmp_path)
+    real = users_module.verify_password
+    landed = []
+
+    def verify_then_reset(password, stored):
+        result = real(password, stored)  # the old password checks out against the old hash...
+        if password == JUDGE[1] and not landed:
+            landed.append(True)
+            store.reset_password("judge", NEW_PASSWORD)  # ...and a reset lands before it is used
+        return result
+
+    monkeypatch.setattr(users_module, "verify_password", verify_then_reset)
+    assert store.authenticate("judge", JUDGE[1]) is None
+    assert store.authenticate("judge", JUDGE[1]) is None  # and it was not cached as valid
+    assert store.authenticate("judge", NEW_PASSWORD) is not None
+
+
+def test_a_user_removed_mid_check_does_not_authenticate(tmp_path, monkeypatch):
+    store, _ = seeded(tmp_path)
+    real = users_module.verify_password
+
+    def verify_then_remove(password, stored):
+        result = real(password, stored)
+        store._users.pop("judge", None)  # the account disappears while the check runs
+        return result
+
+    monkeypatch.setattr(users_module, "verify_password", verify_then_remove)
+    assert store.authenticate("judge", JUDGE[1]) is None
+
+
+def test_validation_errors_never_echo_what_was_sent(tmp_path):
+    client, _ = make(tmp_path)
+    secret = "sk-this-secret-must-not-come-back-1234"
+    missing_name = client.post(  # the whole body is the "input" of a missing-field error
+        "/v1/admin/users", json={"password": secret}, auth=ADMIN, headers=HEADER
+    )
+    wrong_type = client.put("/v1/admin/config", json={"set": secret}, auth=ADMIN, headers=HEADER)
+    for resp in (missing_name, wrong_type):
+        assert resp.status_code == 422
+        assert secret not in resp.text
+        errors = resp.json()["detail"]
+        assert errors and all(set(e) == {"type", "loc", "msg"} for e in errors)
+    assert missing_name.json()["detail"][0]["loc"] == ["body", "username"]  # still says where
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/status", "/admin", "/admin/config", "/admin/users", "/admin/vaults", "/admin/vaults/demo"],
+)
+def test_console_pages_carry_a_strict_content_security_policy(tmp_path, path):
+    client, _ = make(tmp_path, ui=True)
+    headers = client.get(path).headers
+    policy = {
+        part.split()[0]: part.split()[1:]
+        for part in headers["content-security-policy"].split(";")
+        if part.strip()
+    }
+    assert policy["default-src"] == ["'none'"]  # nothing is allowed unless listed below
+    assert policy["connect-src"] == ["'self'"]  # so the page can only talk to its own server
+    assert policy["frame-ancestors"] == ["'none'"] and policy["base-uri"] == ["'none'"]
+    assert policy["form-action"] == ["'none'"] and policy["script-src"] == ["'unsafe-inline'"]
+    assert "'unsafe-eval'" not in headers["content-security-policy"]
+    assert headers["referrer-policy"] == "no-referrer"
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["cache-control"] == "no-store"
+
+
+def test_the_console_needs_nothing_from_any_other_origin():
+    # The policy above allows only inline script and style, so any external reference would break
+    # the page. Keep it self-contained.
+    page = (ROOT / "ui" / "console.html").read_text()
+    assert "<script src" not in page and "<link" not in page and "@import" not in page
+    assert not re.search(r"(?:src|href|action)=[\"']https?:", page)
+    assert "eval(" not in page and "innerHTML" not in page
+
+
+@pytest.mark.parametrize(
+    ("path", "target"),
+    [
+        ("/admin/", "/admin"),
+        ("/status/", "/status"),
+        ("/admin/config/", "/admin/config"),
+        ("/admin/users/", "/admin/users"),
+        ("/admin/vaults/", "/admin/vaults"),
+        ("/admin/vaults/demo/", "/admin/vaults/demo"),
+        ("/admin/vaults/demo/edit/", "/admin/vaults/demo/edit"),
+        ("/admin/vaults/demo/?version=2", "/admin/vaults/demo?version=2"),
+        ("/admin/user/", "/admin/users"),
+        ("/admin/vault/", "/admin/vaults"),
+    ],
+)
+def test_a_trailing_slash_redirects_on_the_same_origin_in_one_hop(tmp_path, path, target):
+    # Behind a TLS-terminating proxy the router's own redirect would point at http://.
+    client, _ = make(tmp_path, ui=True)
+    resp = client.get(path, follow_redirects=False, headers={"X-Forwarded-Proto": "https"})
+    assert resp.status_code == 307 and resp.headers["location"] == target
+    assert client.get(path).status_code == 200  # and it lands on the page, without a login
+
+
+def test_a_redirect_from_an_odd_path_cannot_split_the_header_or_leave_the_site(tmp_path):
+    client, _ = make(tmp_path, ui=True)
+    crlf = client.get("/admin/vaults/a%0d%0aX-Injected:%201/", follow_redirects=False)
+    assert crlf.status_code == 307 and "x-injected" not in crlf.headers
+    location = crlf.headers["location"]
+    assert "\r" not in location and "\n" not in location  # encoded, so the header cannot be split
+    assert location.startswith("/admin/vaults/") and not location.startswith("//")
+    # A slash in the id is not a route at all, so there is nothing to redirect to.
+    slashes = client.get("/admin/vaults/%2f%2fevil.example.com/", follow_redirects=False)
+    assert slashes.status_code == 404 and "location" not in slashes.headers

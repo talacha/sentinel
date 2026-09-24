@@ -13,6 +13,7 @@ from typing import Any, Literal
 from urllib.parse import quote, urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -53,6 +54,20 @@ DEFAULT_CLIENT_DIR = _ROOT / "client"
 _PUBLIC_SHELLS = {"/status", "/admin", "/admin/config", "/admin/users", "/admin/vaults"}
 # Earlier URLs, kept as redirects so bookmarks and links keep working.
 _LEGACY_SHELLS = {"/admin/user", "/admin/vault"}
+
+# The console holds the admin's credentials in memory, so it gets a strict policy: it loads nothing
+# from and talks to nothing but its own origin, and it cannot be framed. Its script and style are
+# inline, which is why those two allow 'unsafe-inline'; everything else is denied.
+_CONSOLE_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        "connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 def _is_shell(path: str) -> bool:
@@ -137,6 +152,17 @@ def create_app(
     base = settings or get_settings()
     runtime = RuntimeConfig(base, overrides_path or base.audit_log_path.parent / "overrides.json")
     app = FastAPI(title="Sentinel Core", version=__version__)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """FastAPI's default 422 echoes the offending input back. For a password or key field
+        that is the secret itself, so report only where the problem is and what it is."""
+        detail = [
+            {"type": e.get("type"), "loc": list(e.get("loc", ())), "msg": e.get("msg")}
+            for e in exc.errors()
+        ]
+        return JSONResponse({"detail": detail}, status_code=422)
+
     state: dict[str, object] = {"engine": engine, "registry": registry}
     lock = threading.Lock()
     live_lock = threading.Lock()
@@ -666,7 +692,17 @@ def create_app(
             return FileResponse(ui_dir / "index.html")
 
         def console() -> FileResponse:
-            return FileResponse(ui_dir / "console.html", headers={"Cache-Control": "no-store"})
+            return FileResponse(ui_dir / "console.html", headers=_CONSOLE_HEADERS)
+
+        def moved(request: Request, target: str) -> RedirectResponse:
+            # Same-origin (relative) redirect. The router's own trailing-slash redirect builds an
+            # absolute URL from the scheme it sees, which behind a TLS-terminating proxy is
+            # http://, so a visitor would take a plaintext hop.
+            query = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse((target.rstrip("/") or "/") + query, status_code=307)
+
+        def without_slash(request: Request) -> RedirectResponse:
+            return moved(request, quote(request.url.path, safe="/"))
 
         # One shell serves every console page: the overview, status, configuration, users, and
         # vaults (list, view, edit). The page reads its own URL to decide what to show.
@@ -680,12 +716,10 @@ def create_app(
             "/admin/vaults/{vault_id}/edit",
         ):
             app.add_api_route(page, console, include_in_schema=False)
-
-        def moved(request: Request, target: str) -> RedirectResponse:
-            query = f"?{request.url.query}" if request.url.query else ""
-            return RedirectResponse(target + query, status_code=307)
+            app.add_api_route(page + "/", without_slash, include_in_schema=False)
 
         @app.get("/admin/user", include_in_schema=False)
+        @app.get("/admin/user/", include_in_schema=False)
         def legacy_users(request: Request) -> RedirectResponse:
             return moved(request, "/admin/users")
 

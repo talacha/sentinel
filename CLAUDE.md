@@ -81,3 +81,9 @@ One shell serves every console page; it reads its own URL and switches pages wit
 the in-memory sign-in survives. Author `display:` rules beat the browser's `[hidden]`, so keep the
 `[hidden] { display:none !important; }` rule and do not add `!important` to `display`. jsdom does not
 implement the CSS cascade: check layout in a real browser, not only in tests.
+
+The console is served with a strict Content-Security-Policy (`api._CONSOLE_HEADERS`): only inline
+script and style, and connections to its own origin. Keep the page self-contained (no external
+script, style, font, image, or `eval`/`innerHTML`); a test enforces it. Validation errors are
+rewritten by an exception handler in `api.py` so they never echo the request body: keep it, since
+the body can hold a password or key. Redirects for console URLs must be same-origin (relative).
