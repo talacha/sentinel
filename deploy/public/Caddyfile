@@ -1,3 +1,11 @@
+# Global options. HTTP/3 (QUIC) runs over UDP, which the firewall in docs/hackathon.md does not
+# open (only TCP 80 and 443), so do not advertise it: browsers would try it, fail, and fall back.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 # Caddy serves https://{$SENTINEL_DOMAIN}, obtains the certificate itself, and forwards to the app.
 # The DNS A record for the domain must point at this machine, and ports 80 and 443 must be open.
 {$SENTINEL_DOMAIN} {
