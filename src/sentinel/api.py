@@ -28,7 +28,14 @@ from .limits import FailureThrottle, HourlyLimiter
 from .models import ReviewReport
 from .runtime import BY_NAME, ENGINE_FIELDS, SECRETS, OverrideError, RuntimeConfig
 from .users import MIN_PASSWORD_LENGTH, PasswordPolicyError, UserStore, generate_password
-from .vault import VaultError, VaultRegistry
+from .vault import (
+    MAX_VAULT_BYTES,
+    VaultConflict,
+    VaultError,
+    VaultRegistry,
+    VaultUnavailable,
+    parse_vault,
+)
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +44,11 @@ DEFAULT_UI_DIR = _ROOT / "ui"
 DEFAULT_CLIENT_DIR = _ROOT / "client"
 
 # Pages that are only a shell: they contain no data and log in with an explicit header.
-_PUBLIC_SHELLS = {"/status", "/admin", "/admin/user"}
+_PUBLIC_SHELLS = {"/status", "/admin", "/admin/user", "/admin/vaults"}
+
+
+def _is_shell(path: str) -> bool:
+    return path in _PUBLIC_SHELLS or path.startswith("/admin/vaults/")
 
 
 def _basic_credentials(request: Request) -> tuple[str, str] | None:
@@ -55,6 +66,18 @@ def _basic_credentials(request: Request) -> tuple[str, str] | None:
 class ConfigUpdate(BaseModel):
     set: dict[str, Any] = Field(default_factory=dict)
     clear: list[str] = Field(default_factory=list)
+
+
+class VaultSave(BaseModel):
+    """A new version of a vault, edited from `base_version` (used to refuse stale saves)."""
+
+    yaml: str
+    base_version: int
+    note: str = ""
+
+
+class VaultValidate(BaseModel):
+    yaml: str
 
 
 class PasswordReset(BaseModel):
@@ -75,6 +98,7 @@ def create_app(
     preflight_deps: dict[str, Any] | None = None,
     admin_throttle: FailureThrottle | None = None,
     users_path: Path | None = None,
+    vaults_overlay: Path | None = None,
 ) -> FastAPI:
     """Build the app. The engine is created lazily so the app can start (and report what is
     misconfigured on /healthz) before an inference endpoint is set.
@@ -105,7 +129,12 @@ def create_app(
     def get_registry() -> VaultRegistry:
         with lock:
             if state["registry"] is None:
-                state["registry"] = VaultRegistry(base.vaults_dir)
+                # Edits are stored in a writable overlay next to the audit log; the shipped
+                # files (often mounted read-only) are never modified.
+                state["registry"] = VaultRegistry(
+                    base.vaults_dir,
+                    overlay=vaults_overlay or base.vaults_overlay_dir,
+                )
             return state["registry"]  # type: ignore[return-value]
 
     def get_engine() -> Engine:
@@ -121,7 +150,7 @@ def create_app(
     @app.middleware("http")
     async def require_login(request: Request, call_next):
         path = request.url.path
-        if request.method == "OPTIONS" or path == "/healthz" or path in _PUBLIC_SHELLS:
+        if request.method == "OPTIONS" or path == "/healthz" or _is_shell(path):
             return await call_next(request)
         admin_scope = path.startswith("/v1/admin")
         if admin_scope:
@@ -285,6 +314,19 @@ def create_app(
                 f"{len(listed)} user(s): {admins} admin, {len(listed) - admins} visitor; "
                 f"visitor login {'required' if users.login_required() else 'OFF'}",
             )
+        try:
+            registry = get_registry()
+            edited = [v for v in registry.ids() if registry.info(v).source == "edited"]
+            if registry.errors:
+                report.add("vault edits", "warn", "; ".join(registry.errors))
+            elif edited:
+                report.add(
+                    "vault edits",
+                    "pass",
+                    f"{len(edited)} edited in the console: {', '.join(edited)}",
+                )
+        except VaultError:
+            pass  # a broken shipped vault directory is already reported by the vaults check
         if runtime.load_error:
             report.add("admin overrides", "warn", runtime.load_error)
         elif runtime.overrides:
@@ -387,6 +429,132 @@ def create_app(
             payload["password"] = password  # shown once, never stored in the clear
         return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
+    # ------------------------------------------------------------------ vault admin API
+    def vault_summary(vault_id: str) -> dict[str, Any]:
+        registry = get_registry()
+        vault, info = registry.get(vault_id), registry.info(vault_id)
+        return {
+            "id": vault.id,
+            "title": vault.title,
+            "description": vault.description,
+            "language": vault.language,
+            "rule_count": len(vault.rules),
+            "version": info.version,
+            "source": info.source,
+            "updated_by": info.updated_by,
+            "updated_at": info.updated_at,
+            "note": info.note,
+            "shipped_changed": info.shipped_changed,
+        }
+
+    def require_vault(vault_id: str) -> VaultRegistry:
+        registry = get_registry()
+        if vault_id not in registry.ids():
+            raise HTTPException(404, f"unknown vault {vault_id!r}")
+        return registry
+
+    @app.get("/v1/admin/vaults")
+    def admin_vaults() -> dict:
+        registry = get_registry()
+        return {
+            "vaults": [vault_summary(v) for v in registry.ids()],
+            "editable": registry.editable,
+            "problems": registry.errors,
+        }
+
+    @app.get("/v1/admin/vaults/{vault_id}")
+    def admin_vault(vault_id: str, version: int | None = None) -> dict:
+        """One vault: its YAML (current, or an earlier `version`), rules, and version history."""
+        registry = require_vault(vault_id)
+        try:
+            text = registry.text(vault_id, version)
+        except VaultError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        info = registry.info(vault_id)
+        try:  # an old version might not validate under today's rules; still show its text
+            rules = [
+                {
+                    "id": r.id,
+                    "title": r.title,
+                    "severity": r.severity,
+                    "kind": "check" if r.check is not None else "criterion",
+                    "external_check": r.external_check is not None,
+                }
+                for r in parse_vault(text, vault_id).rules
+            ]
+        except VaultError:
+            rules = []
+        return {
+            **vault_summary(vault_id),
+            "yaml": text,
+            "viewing_version": version or info.version,
+            "is_current": version is None or version == info.version,
+            "rules": rules,
+            "history": [
+                {
+                    "version": h.version,
+                    "saved_by": h.saved_by,
+                    "saved_at": h.saved_at,
+                    "note": h.note,
+                    "sha256": h.sha256[:12],
+                }
+                for h in reversed(registry.history(vault_id))
+            ],
+            "editable": registry.editable,
+        }
+
+    @app.post("/v1/admin/vaults/{vault_id}/validate", dependencies=[Depends(admin_write)])
+    def admin_validate_vault(vault_id: str, body: VaultValidate) -> dict:
+        """Check YAML without saving it: the same validation a save would apply."""
+        require_vault(vault_id)
+        try:
+            vault = parse_vault(body.yaml, vault_id)
+            if vault.id != vault_id:
+                raise VaultError(
+                    "the vault id cannot be changed",
+                    [{"path": "id", "message": f"must stay {vault_id!r}"}],
+                )
+        except VaultError as exc:
+            raise HTTPException(422, {"errors": exc.errors}) from exc
+        return {"ok": True, "title": vault.title, "rule_count": len(vault.rules)}
+
+    @app.put("/v1/admin/vaults/{vault_id}", dependencies=[Depends(admin_write)])
+    def admin_save_vault(vault_id: str, body: VaultSave, request: Request) -> dict:
+        """Save a new version of a vault. Validated like a shipped file; applies immediately."""
+        registry = require_vault(vault_id)
+        if len(body.yaml.encode("utf-8")) > MAX_VAULT_BYTES:
+            raise HTTPException(
+                413, {"errors": [{"path": "", "message": "the vault is too large"}]}
+            )
+        previous = registry.info(vault_id).version
+        try:
+            saved = registry.save(
+                vault_id,
+                body.yaml,
+                saved_by=request.state.user.username,
+                base_version=body.base_version,
+                note=body.note,
+            )
+        except VaultConflict as exc:
+            raise HTTPException(409, {"message": str(exc), "current": exc.current}) from exc
+        except VaultUnavailable as exc:
+            raise HTTPException(501, {"message": str(exc)}) from exc
+        except VaultError as exc:
+            raise HTTPException(422, {"errors": exc.errors}) from exc
+        try:  # what changed, by hash: the vault text itself is not copied into the audit log
+            audit.event(
+                "vault_edit",
+                admin=request.state.user.username,
+                vault_id=vault_id,
+                version=saved.version,
+                previous_version=previous,
+                sha256=saved.sha256,
+                note=saved.note,
+            )
+        except OSError:
+            log.exception("could not write the vault_edit audit event")
+        return {**vault_summary(vault_id), "saved_version": saved.version}
+
     # ------------------------------------------------------------------ pages
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/static", StaticFiles(directory=ui_dir), name="static")
@@ -401,6 +569,9 @@ def create_app(
         app.add_api_route("/status", console, include_in_schema=False)
         app.add_api_route("/admin", console, include_in_schema=False)
         app.add_api_route("/admin/user", console, include_in_schema=False)
+        app.add_api_route("/admin/vaults", console, include_in_schema=False)
+        app.add_api_route("/admin/vaults/{vault_id}", console, include_in_schema=False)
+        app.add_api_route("/admin/vaults/{vault_id}/edit", console, include_in_schema=False)
 
     if client_dir is not None and client_dir.is_dir():
         app.mount("/app", StaticFiles(directory=client_dir, html=True), name="client")

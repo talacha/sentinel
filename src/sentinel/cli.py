@@ -52,8 +52,16 @@ def render_report(report: ReviewReport) -> str:
     return "\n".join(lines)
 
 
+def _registry(args: argparse.Namespace, settings: Settings) -> VaultRegistry:
+    """The vaults the service uses, including edits made in the console. An explicit
+    `--vaults-dir` is used exactly as given, without the saved edits."""
+    if args.vaults_dir:
+        return VaultRegistry(args.vaults_dir)
+    return VaultRegistry(settings.vaults_dir, overlay=settings.vaults_overlay_dir)
+
+
 def _cmd_review(args: argparse.Namespace, settings: Settings) -> int:
-    registry = VaultRegistry(args.vaults_dir or settings.vaults_dir)
+    registry = _registry(args, settings)
     vault = registry.get(args.vault)
     doc = ingest_path(args.file, max_chars=settings.max_document_chars)
     report = Engine.from_settings(settings).review(doc, vault)
@@ -62,7 +70,7 @@ def _cmd_review(args: argparse.Namespace, settings: Settings) -> int:
 
 
 def _cmd_vaults(args: argparse.Namespace, settings: Settings) -> int:
-    for v in VaultRegistry(args.vaults_dir or settings.vaults_dir):
+    for v in _registry(args, settings):
         print(f"{v.id}\t{len(v.rules)} rules\t{v.title}")
     return 0
 

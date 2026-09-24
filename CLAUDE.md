@@ -37,7 +37,7 @@ docker compose up --build        # app only; the model runs on your dedicated GP
 - **Secrets are write-only.** API keys and passwords never appear in any API response, page,
   status/preflight output, error message, or the audit log (`preflight.redact`, `runtime.describe`).
   Tests assert this; keep them passing when adding fields.
-- The admin console (`/status`, `/admin`, `/v1/admin/*`) needs `ADMIN_PASSWORD`; changes are
+- The admin console (`/status`, `/admin`, `/admin/user`, `/admin/vaults`, `/v1/admin/*`) needs `ADMIN_PASSWORD`; changes are
   validated atomically, persisted 0600 (`runtime.py`), audited by field name, and require the
   `X-Sentinel-Admin` header. File paths, CORS origins, and admin credentials are not editable.
 - Model ids must match the endpoint's catalog exactly: use `sentinel preflight` to check.
@@ -46,6 +46,10 @@ docker compose up --build        # app only; the model runs on your dedicated GP
   Environment-defined users (`ADMIN_*`, `ACCESS_*`) follow the environment until reset in the
   console. Do not add a way to disable or delete the last visitor: that silently turns login off.
   Password hashing must stay off the event loop and behind the admin failure throttle.
+- **Vault edits use the same validation as shipped files** (`vault.parse_vault`) and never touch
+  them: saves are numbered versions in a writable overlay (`<audit dir>/vaults.d/`, 0600), guarded
+  by `base_version` (409 on a stale save) and audited by SHA-256 only. The API and the CLI must
+  build their registry from `Settings.vaults_overlay_dir` so they always agree on the live vault.
 
 ## Gotchas
 
