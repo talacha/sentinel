@@ -56,7 +56,7 @@ cap, and a domain. It never prints secrets.
 | `GET /healthz` | Status, LLM host and model, whether search is configured. Never returns secrets. |
 | `GET /` | The built-in web UI, where people upload documents. |
 | `GET /app/` | The client-facing app (see [`client/`](../client/README.md)). |
-| `GET /status`, `GET /admin`, `GET /admin/user`, `GET /admin/vaults[/<id>[/edit]]` | The admin console page: one shell, four views (status, configuration, users, vaults). Contains no data; see below. |
+| `GET /admin`, `/status`, `/admin/config`, `/admin/users`, `/admin/vaults[/<id>[/edit]]` | The admin console: one shell, five pages (overview, status, configuration, users, vaults). Contains no data; see below. |
 | `/v1/admin/*` | The console's API. Admin login required; see below. |
 
 ```bash
@@ -88,46 +88,83 @@ The same JSON comes from `--json` and `POST /v1/reviews`:
     perimeter), `status` (`confirmed`, `contradicted`, `unclear`, `unavailable`), `rationale`, and
     `sources[]` with `url` and `role` (`supports`, `contradicts`, `consulted`).
 
-## Admin console: `/status`, `/admin`, `/admin/user`, and `/admin/vaults`
+## Admin console: `/admin`
 
-One page, four views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
-(12+ characters, different from `ACCESS_PASSWORD`); without it the pages and `/v1/admin/*`
-refuse to work.
+One shell, five pages, for the person running the deployment. Enable it by setting
+`ADMIN_PASSWORD` (12+ characters, different from `ACCESS_PASSWORD`); without it the pages and
+`/v1/admin/*` refuse to work. Every page has the same navigation and breadcrumbs, and moving
+between them does not reload, so you sign in once. A form with unsaved changes asks before you
+leave it (a link, Back, or closing the tab).
 
-**`/status`** runs the same checks as `sentinel preflight`, against the settings the service is
-actually using. It shows whether each key and model is valid, grouped by Model, Search, Access, and
-Storage. *Refresh* runs the static checks (free, instant); *Run live checks* also contacts the
-model endpoint and Tavily to prove the keys work and the model id exists (a few tokens and one
-search; one live run at a time).
+| Page | What it is for |
+| --- | --- |
+| **`/admin`** | The overview: a card for each page below, with a one-line live summary (ready or not, how many settings are overridden, how many users, how many vaults). |
+| **`/status`** | Whether each key and model is valid. |
+| **`/admin/config`** | A form to override the values the server's environment set. |
+| **`/admin/users`** | Who can sign in: add users and edit them. |
+| **`/admin/vaults`** | The vaults: list, view the current version, edit. |
 
-**`/admin`** edits settings at runtime: the model endpoint, model id and its parameters, the
-Tavily key, limits, and the review cap. A change is validated like `.env`
-(a batch with any invalid field applies nothing), takes effect immediately, is saved to
-`overrides.json` next to the audit log with owner-only permissions, and survives a restart.
-"Reset to environment value" removes an override. Not editable at runtime: file paths and CORS
-origins. Logins are managed on the Users page, not here.
+The earlier URLs `/admin/user` and `/admin/vault[/...]` still work and redirect to the pages above.
 
-**`/admin/user`** lists the authorized users and resets their passwords. The admin and visitor
-logins defined by the environment (`admin` and `judge` in this deployment) always come first. An
-admin can pick a password (12+ characters, not easy to guess) or have one generated; a generated
-password is shown **once** and then wiped from the page. The old password stops working
-immediately, and an admin can reset their own (the console stays signed in).
+### Status: `/status`
 
+Runs the same checks as `sentinel preflight`, against the settings the service is actually using,
+grouped by Model, Search, Access, and Storage. *Refresh* runs the static checks (free, instant);
+*Run live checks* also contacts the model endpoint and Tavily to prove the keys work and the model
+id exists (a few tokens and one search; one live run at a time).
+
+### Configuration: `/admin/config`
+
+Edits settings at runtime: the model endpoint, model id and its parameters, the Tavily key, limits,
+and the review cap. A change is validated like `.env` (a batch with any invalid field applies
+nothing), takes effect immediately, is saved to `overrides.json` next to the audit log with
+owner-only permissions, and survives a restart. "Reset to environment value" removes an override,
+and *Save, then verify with live checks* saves and opens Status with a live run. Not editable at
+runtime: file paths and CORS origins. Logins are managed on the Users page, not here.
+
+### Users: `/admin/users`
+
+Lists the authorized users; the admin and visitor logins defined by the environment (`admin` and
+`judge` in this deployment) always come first. Admins can **add** a user and **edit** one:
+
+- **Add user:** a username (letters, digits, and `. _ @ -`, up to 64, unique ignoring case), a role
+  (`visitor` runs reviews; `admin` can also use this console, so it is as powerful as the
+  environment's admin), and a password: chosen (12+ characters, not easy to guess) or generated.
+  A generated password is shown **once** and then wiped from the page.
+- **Edit user:** change the role, and/or keep, choose, or generate a new password, in one form.
+  It is all or nothing: if anything is invalid, nothing is changed. A changed password stops the
+  old one working immediately, and an admin can change their own password (the console stays
+  signed in).
+- **Roles that cannot be changed:** your own; the environment-defined admin and visitor (their
+  role is set by `ADMIN_USER` and `ACCESS_USER`); the only admin; and the only visitor (changing
+  it would silently turn the visitor login off). The form says which applies.
+- **Not offered on purpose:** deleting or disabling users, for the same reason.
 - **Where users live:** `users.json` next to the audit log, owner-only permissions, holding
   salted scrypt **hashes only**, never plaintext.
 - **Environment vs console:** the two environment-defined users follow the environment
-  (a rotated `ACCESS_PASSWORD` takes effect on restart) until someone resets their password on
+  (a rotated `ACCESS_PASSWORD` takes effect on restart) until someone changes their password on
   this page; from then on the console's password wins and the environment value is ignored for
   that user. Removing `ACCESS_PASSWORD` from the environment removes a still-environment-defined
-  visitor and turns the visitor login off.
-- **Not offered on purpose:** creating, deleting, or disabling users. Disabling the last visitor
-  would silently turn the login off on a public site.
-- **Audited:** each reset appends a `user_password_reset` event (who reset whom, and whether it
-  was generated); the password itself is never logged.
+  visitor; the login turns off only if no other visitor exists. An environment user whose name is
+  already taken by a console user is not created (the console user is never overwritten).
+- **Audited:** `user_created` and `user_updated` (who did it, to whom, the role change, and whether
+  a password was reset or generated); `user_password_reset` for the older reset call. Passwords
+  are never logged.
 
-**`/admin/vaults`** lists every vault with its rule count, current version, and last change.
-`/admin/vaults/<id>` shows the **current version**: its rules, the YAML, and the version history
-(any earlier version can be opened and read). Admins can edit at `/admin/vaults/<id>/edit`; see
+The API behind the page (admin-only; writes need JSON and the `X-Sentinel-Admin` header):
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /v1/admin/users` | The users, each with `role`, `source`, and `role_locked` (why its role cannot be changed, or `null`). Never a hash. |
+| `POST /v1/admin/users` | `{"username", "role", "password"}` or `{"username", "role", "generate": true}`. `201` with the user (and a generated `password`, once); `409` name taken; `422` with `errors` by field. |
+| `PUT /v1/admin/users/<name>` | `{"role"?, "password"? or "generate"?}`. All or nothing. `422` with `errors` by field; `404` unknown user. |
+| `POST /v1/admin/users/<name>/password` | `{"password"}` or `{"generate": true}`. The password-only form of the call above. |
+
+### Vaults: `/admin/vaults`
+
+Lists every vault with its rule count, current version, and last change. `/admin/vaults/<id>`
+shows the **current version**: its rules, the YAML, and the version history (any earlier version can
+be opened and read). Admins can edit at `/admin/vaults/<id>/edit`; see
 [Editing vaults](#editing-vaults).
 
 Security model:

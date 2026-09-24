@@ -1,4 +1,4 @@
-"""Users and passwords: hashing, the store, and the admin Users API."""
+"""Users and passwords: hashing, the store, adding and editing users, and the admin API."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from sentinel.engine import Engine
 from sentinel.llm import FakeLLM
 from sentinel.users import (
     PasswordPolicyError,
+    UserError,
     UserStore,
     generate_password,
     hash_password,
@@ -471,7 +472,7 @@ def test_logins_are_no_longer_a_runtime_setting_because_the_users_page_owns_them
 
 def test_the_users_page_is_a_data_free_shell(tmp_path):
     client, _ = make(tmp_path, ui=True)
-    page = client.get("/admin/user")
+    page = client.get("/admin/users")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
     assert page.headers["cache-control"] == "no-store"
     for secret in (ADMIN[1], JUDGE[1]):
@@ -487,3 +488,396 @@ def test_repeated_wrong_admin_passwords_are_throttled_before_any_hashing(tmp_pat
     monkeypatch.setattr(users_module, "verify_password", lambda p, h: calls.append(1) or real(p, h))
     blocked = client.get("/v1/admin/users", auth=("admin", "another-wrong-guess"))
     assert blocked.status_code == 429 and calls == []  # refused without spending CPU on the guess
+
+
+# --------------------------------------------------------------------------- add and edit (store)
+
+OPS_PASSWORD = "ops-people-password-8821"
+
+
+def test_create_stores_a_hashed_console_user_who_can_sign_in(tmp_path):
+    store, path = seeded(tmp_path)
+    store.create("ops.team", "visitor", OPS_PASSWORD)
+    user = store.get("ops.team")
+    assert user.source == "console" and user.bootstrap is None and user.role == "visitor"
+    assert OPS_PASSWORD not in path.read_text() and "scrypt$" in path.read_text()
+    assert UserStore(path).authenticate("ops.team", OPS_PASSWORD) is not None  # survives a restart
+    assert store.authenticate("ops.team", "wrong-password-here") is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        " ",
+        "has space",
+        "has:colon",
+        "-leading",
+        ".dot",
+        "x" * 65,
+        "ünï",
+        "a/b",
+        "tab\t",
+        "ops\n",
+    ],
+)
+def test_create_refuses_bad_usernames_and_stores_nothing(tmp_path, name):
+    store, path = seeded(tmp_path)
+    before = path.read_text()
+    with pytest.raises(UserError) as exc:
+        store.create(name, "visitor", OPS_PASSWORD)
+    assert exc.value.field == "username" and not exc.value.conflict
+    assert path.read_text() == before
+
+
+@pytest.mark.parametrize("name", ["a", "ops", "ops.team-2", "first_last", "person@example.com"])
+def test_create_accepts_reasonable_usernames(tmp_path, name):
+    store, _ = seeded(tmp_path)
+    store.create(name, "visitor", OPS_PASSWORD)
+    assert store.get(name) is not None
+
+
+def test_create_refuses_a_duplicate_ignoring_case(tmp_path):
+    store, _ = seeded(tmp_path)
+    for name in ("judge", "JUDGE", "Admin"):
+        with pytest.raises(UserError) as exc:
+            store.create(name, "visitor", OPS_PASSWORD)
+        assert exc.value.conflict and exc.value.field == "username"
+
+
+def test_create_checks_role_and_password_and_changes_nothing_on_failure(tmp_path):
+    store, path = seeded(tmp_path)
+    before = path.read_text()
+    with pytest.raises(UserError) as role:
+        store.create("ops", "superuser", OPS_PASSWORD)
+    assert role.value.field == "role"
+    for bad in ("short", "ops", "  padded-password-123  "):
+        with pytest.raises(PasswordPolicyError):
+            store.create("ops", "visitor", bad)
+    assert store.get("ops") is None and path.read_text() == before
+
+
+def test_the_number_of_users_is_capped(tmp_path, monkeypatch):
+    store, _ = seeded(tmp_path)
+    monkeypatch.setattr(users_module, "MAX_USERS", 3)
+    store.create("third", "visitor", OPS_PASSWORD)
+    with pytest.raises(UserError, match="at most 3"):
+        store.create("fourth", "visitor", OPS_PASSWORD)
+
+
+def test_an_environment_user_never_overwrites_a_console_user_with_the_same_name(tmp_path):
+    store, path = seeded(tmp_path, visitor_password=None)  # no environment visitor yet
+    store.create("judge", "visitor", OPS_PASSWORD)
+    store.sync_env(  # the environment now defines a visitor with that name
+        admin_user="admin", admin_password=ADMIN[1], visitor_user="judge", visitor_password=JUDGE[1]
+    )
+    assert store.authenticate("judge", OPS_PASSWORD) is not None
+    assert store.authenticate("judge", JUDGE[1]) is None
+    assert store.get("judge").source == "console"
+
+
+def test_update_changes_the_role_and_password_together(tmp_path):
+    store, _ = seeded(tmp_path)
+    store.create("ops", "visitor", OPS_PASSWORD)
+    change = store.update("ops", role="admin", password=NEW_PASSWORD, actor="admin")
+    assert (change.role_from, change.role_to, change.password_changed) == ("visitor", "admin", True)
+    user = store.authenticate("ops", NEW_PASSWORD)
+    assert user is not None and user.role == "admin"
+    assert store.authenticate("ops", OPS_PASSWORD) is None  # the old password stops at once
+
+
+def test_update_is_all_or_nothing(tmp_path):
+    store, path = seeded(tmp_path)
+    store.create("ops", "visitor", OPS_PASSWORD)
+    before = path.read_text()
+    with pytest.raises(PasswordPolicyError):
+        store.update("ops", role="admin", password="short", actor="admin")
+    assert store.get("ops").role == "visitor" and path.read_text() == before  # role not applied
+    with pytest.raises(UserError):
+        store.update("ops", role="admin", password=NEW_PASSWORD, actor="ops")  # self role change
+    assert store.authenticate("ops", OPS_PASSWORD) is not None  # password not applied
+
+
+def test_update_needs_something_to_change_and_a_known_user_and_a_valid_role(tmp_path):
+    store, _ = seeded(tmp_path)
+    store.create("ops", "visitor", OPS_PASSWORD)
+    with pytest.raises(UserError, match="nothing to change"):
+        store.update("ops", role="visitor", actor="admin")  # the role it already has
+    with pytest.raises(KeyError):
+        store.update("nobody", password=NEW_PASSWORD)
+    with pytest.raises(UserError) as exc:
+        store.update("ops", role="root", actor="admin")
+    assert exc.value.field == "role"
+
+
+def test_nobody_can_change_their_own_role(tmp_path):
+    store, _ = seeded(tmp_path)
+    store.create("ops", "admin", OPS_PASSWORD)
+    with pytest.raises(UserError, match="your own role"):
+        store.update("ops", role="visitor", actor="ops")
+    assert store.update("ops", role="visitor", actor="admin").role_to == "visitor"
+
+
+def test_the_environment_defined_users_keep_their_roles(tmp_path):
+    store, _ = seeded(tmp_path)
+    store.create("ops", "visitor", OPS_PASSWORD)  # so neither is the only one of its kind
+    store.create("boss", "admin", OPS_PASSWORD)
+    for name, role in (("admin", "visitor"), ("judge", "admin")):
+        with pytest.raises(UserError, match="environment"):
+            store.update(name, role=role, actor="boss")
+
+
+def test_the_only_visitor_and_the_only_admin_keep_their_roles(tmp_path):
+    store, _ = seeded(tmp_path, visitor_password=None, admin_password=None)
+    store.create("solo-visitor", "visitor", OPS_PASSWORD)
+    store.create("solo-admin", "admin", OPS_PASSWORD)
+    with pytest.raises(UserError, match="visitor login off"):
+        store.update("solo-visitor", role="admin", actor="solo-admin")
+    with pytest.raises(UserError, match="only admin"):
+        store.update("solo-admin", role="visitor", actor="someone-else")
+    assert store.login_required()  # the visitor login is still on
+    store.create("second-visitor", "visitor", OPS_PASSWORD)  # now the first is not the only one
+    assert store.update("solo-visitor", role="admin", actor="solo-admin").role_to == "admin"
+
+
+def test_the_list_says_why_a_role_cannot_be_changed(tmp_path):
+    store, _ = seeded(tmp_path)
+    store.create("ops", "visitor", OPS_PASSWORD)
+    locks = {u["username"]: u["role_locked"] for u in store.list()}
+    assert "environment" in locks["admin"] and "environment" in locks["judge"]
+    assert locks["ops"] is None
+
+
+# --------------------------------------------------------------------------- add and edit (API)
+
+
+def create(client, body, **kwargs):
+    kwargs.setdefault("auth", ADMIN)
+    kwargs.setdefault("headers", HEADER)
+    return client.post("/v1/admin/users", json=body, **kwargs)
+
+
+def edit(client, username, body, **kwargs):
+    kwargs.setdefault("auth", ADMIN)
+    kwargs.setdefault("headers", HEADER)
+    return client.put(f"/v1/admin/users/{username}", json=body, **kwargs)
+
+
+def test_only_an_admin_with_the_header_and_json_can_add_or_edit_users(tmp_path):
+    client, _ = make(tmp_path)
+    body = {"username": "ops", "role": "visitor", "password": OPS_PASSWORD}
+    assert create(client, body, auth=None).status_code == 401
+    assert create(client, body, auth=JUDGE).status_code == 401  # a visitor is not an admin
+    assert create(client, body, headers={}).status_code == 403
+    form = client.post("/v1/admin/users", data=body, auth=ADMIN, headers=HEADER)
+    assert form.status_code == 415
+    assert edit(client, "judge", {"generate": True}, auth=JUDGE).status_code == 401
+    assert edit(client, "judge", {"generate": True}, headers={}).status_code == 403
+    names = [u["username"] for u in client.get("/v1/admin/users", auth=ADMIN).json()["users"]]
+    assert names == ["admin", "judge"]  # nothing was added
+
+
+def test_adding_a_visitor_with_a_chosen_password(tmp_path):
+    client, cfg = make(tmp_path)
+    resp = create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    assert resp.status_code == 201 and resp.headers["cache-control"] == "no-store"
+    body = resp.json()
+    assert body["user"]["username"] == "ops" and body["user"]["role"] == "visitor"
+    assert body["user"]["source"] == "console" and body["generated"] is False
+    assert "password" not in body and OPS_PASSWORD not in resp.text
+    assert client.get("/v1/vaults", auth=("ops", OPS_PASSWORD)).status_code == 200
+    assert client.get("/v1/admin/users", auth=("ops", OPS_PASSWORD)).status_code == 401
+    assert OPS_PASSWORD not in (cfg.audit_log_path.parent / "users.json").read_text()
+
+
+def test_adding_a_user_with_a_generated_password_shows_it_once(tmp_path):
+    client, cfg = make(tmp_path)
+    resp = create(client, {"username": "ops", "role": "visitor", "generate": True})
+    password = resp.json()["password"]
+    assert resp.status_code == 201 and len(password) >= 20 and resp.json()["generated"] is True
+    assert client.get("/v1/vaults", auth=("ops", password)).status_code == 200
+    assert password not in client.get("/v1/admin/users", auth=ADMIN).text  # never shown again
+    assert password not in (cfg.audit_log_path.parent / "users.json").read_text()
+    assert password not in cfg.audit_log_path.read_text()
+
+
+def test_a_new_admin_can_use_the_console_and_a_new_visitor_cannot(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "boss", "role": "admin", "password": OPS_PASSWORD})
+    create(client, {"username": "guest", "role": "visitor", "password": NEW_PASSWORD})
+    assert client.get("/v1/admin/users", auth=("boss", OPS_PASSWORD)).status_code == 200
+    assert client.get("/v1/admin/users", auth=("guest", NEW_PASSWORD)).status_code == 401
+    listed = client.get("/v1/admin/users", auth=ADMIN).json()["users"]
+    assert [u["username"] for u in listed] == ["admin", "judge", "boss", "guest"]
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "field"),
+    [
+        ({"username": "ops", "role": "visitor"}, 422, "password"),  # neither
+        (
+            {"username": "ops", "password": OPS_PASSWORD, "generate": True},
+            422,
+            "password",
+        ),  # both
+        ({"username": "ops", "password": "short"}, 422, "password"),
+        ({"username": "ops", "password": "ops"}, 422, "password"),
+        ({"username": "bad name", "password": OPS_PASSWORD}, 422, "username"),
+        ({"username": "has:colon", "password": OPS_PASSWORD}, 422, "username"),
+        ({"username": "JUDGE", "password": OPS_PASSWORD}, 409, "username"),  # case-insensitive
+        ({"username": "admin", "password": OPS_PASSWORD}, 409, "username"),
+    ],
+)
+def test_bad_new_users_are_rejected_with_the_field_to_blame(tmp_path, body, status, field):
+    client, _ = make(tmp_path)
+    resp = create(client, body)
+    assert resp.status_code == status and field in resp.json()["detail"]["errors"]
+    names = [u["username"] for u in client.get("/v1/admin/users", auth=ADMIN).json()["users"]]
+    assert names == ["admin", "judge"]  # nothing was added
+
+
+def test_an_unknown_role_is_refused(tmp_path):
+    client, _ = make(tmp_path)
+    resp = create(client, {"username": "ops", "role": "root", "password": OPS_PASSWORD})
+    assert resp.status_code == 422
+    assert edit(client, "judge", {"role": "root"}).status_code == 422
+
+
+def test_adding_and_editing_are_audited_without_passwords(tmp_path):
+    client, cfg = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    create(client, {"username": "two", "role": "visitor", "generate": True})
+    edit(client, "ops", {"role": "admin", "password": NEW_PASSWORD})
+    audit = cfg.audit_log_path.read_text()
+    assert OPS_PASSWORD not in audit and NEW_PASSWORD not in audit
+    events = [json.loads(line) for line in audit.splitlines()]
+    assert [(e["event"], e["username"]) for e in events] == [
+        ("user_created", "ops"),
+        ("user_created", "two"),
+        ("user_updated", "ops"),
+    ]
+    assert (events[0]["admin"], events[0]["role"], events[0]["generated"]) == (
+        "admin",
+        "visitor",
+        False,
+    )
+    assert events[1]["generated"] is True
+    assert (events[2]["role_from"], events[2]["role_to"], events[2]["password_reset"]) == (
+        "visitor",
+        "admin",
+        True,
+    )
+
+
+def test_editing_the_role_takes_effect_immediately(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    creds = ("ops", OPS_PASSWORD)
+    assert client.get("/v1/admin/users", auth=creds).status_code == 401
+    resp = edit(client, "ops", {"role": "admin"})
+    assert resp.status_code == 200 and resp.json()["user"]["role"] == "admin"
+    assert client.get("/v1/admin/users", auth=creds).status_code == 200
+    edit(client, "ops", {"role": "visitor"})
+    assert client.get("/v1/admin/users", auth=creds).status_code == 401
+    assert client.get("/v1/vaults", auth=creds).status_code == 200
+
+
+def test_editing_a_password_replaces_it_and_can_generate_one(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    assert edit(client, "ops", {"password": NEW_PASSWORD}).status_code == 200
+    assert client.get("/v1/vaults", auth=("ops", OPS_PASSWORD)).status_code == 401
+    assert client.get("/v1/vaults", auth=("ops", NEW_PASSWORD)).status_code == 200
+    generated = edit(client, "ops", {"generate": True}).json()
+    assert client.get("/v1/vaults", auth=("ops", generated["password"])).status_code == 200
+
+
+def test_a_bad_edit_changes_nothing(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    resp = edit(client, "ops", {"role": "admin", "password": "short"})
+    assert resp.status_code == 422 and "password" in resp.json()["detail"]["errors"]
+    listed = {u["username"]: u for u in client.get("/v1/admin/users", auth=ADMIN).json()["users"]}
+    assert listed["ops"]["role"] == "visitor"  # the valid role change was not applied either
+    assert client.get("/v1/vaults", auth=("ops", OPS_PASSWORD)).status_code == 200
+    both = edit(client, "ops", {"password": NEW_PASSWORD, "generate": True})
+    assert both.status_code == 422 and "password" in both.json()["detail"]["errors"]
+    assert edit(client, "ops", {}).status_code == 422  # nothing to change
+    assert edit(client, "nobody", {"generate": True}).status_code == 404
+
+
+def test_role_rules_are_enforced_by_the_api(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "boss", "role": "admin", "password": OPS_PASSWORD})
+    boss = ("boss", OPS_PASSWORD)
+    own = edit(client, "boss", {"role": "visitor"}, auth=boss)
+    assert own.status_code == 422 and "your own role" in own.json()["detail"]["errors"]["role"]
+    for name, role in (("admin", "visitor"), ("judge", "admin")):
+        resp = edit(client, name, {"role": role}, auth=boss)  # boss is not the one being changed
+        assert resp.status_code == 422 and "environment" in resp.json()["detail"]["errors"]["role"]
+    listed = {u["username"]: u for u in client.get("/v1/admin/users", auth=ADMIN).json()["users"]}
+    assert (listed["admin"]["role"], listed["judge"]["role"], listed["boss"]["role"]) == (
+        "admin",
+        "visitor",
+        "admin",
+    )
+    assert (
+        edit(client, "boss", {"password": NEW_PASSWORD}, auth=boss).status_code == 200
+    )  # own pw ok
+
+
+def test_the_user_list_carries_the_role_lock_reasons(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    listed = {u["username"]: u for u in client.get("/v1/admin/users", auth=ADMIN).json()["users"]}
+    assert "environment" in listed["admin"]["role_locked"] and listed["ops"]["role_locked"] is None
+
+
+def test_the_status_page_counts_added_users(tmp_path):
+    client, _ = make(tmp_path)
+    create(client, {"username": "ops", "role": "visitor", "password": OPS_PASSWORD})
+    create(client, {"username": "boss", "role": "admin", "password": NEW_PASSWORD})
+    checks = {c["name"]: c for c in client.get("/v1/admin/status", auth=ADMIN).json()["checks"]}
+    assert "4 user(s): 2 admin, 2 visitor" in checks["users"]["detail"]
+
+
+# --------------------------------------------------------------------------- pages and old URLs
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/status", "/admin", "/admin/config", "/admin/users", "/admin/vaults", "/admin/vaults/demo"],
+)
+def test_every_console_page_is_a_data_free_shell_even_behind_a_visitor_login(tmp_path, path):
+    client, _ = make(tmp_path, ui=True)
+    page = client.get(path)
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    assert page.headers["cache-control"] == "no-store"
+    for secret in (ADMIN[1], JUDGE[1]):
+        assert secret not in page.text
+    assert client.get(path + "/").status_code in (200, 307)  # a trailing slash is not a 401
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("/admin/user", "/admin/users"),
+        ("/admin/vault", "/admin/vaults"),
+        ("/admin/vault/demo", "/admin/vaults/demo"),
+        ("/admin/vault/demo/edit", "/admin/vaults/demo/edit"),
+        ("/admin/vault/demo?version=1", "/admin/vaults/demo?version=1"),
+    ],
+)
+def test_the_earlier_singular_urls_redirect_without_a_login(tmp_path, old, new):
+    client, _ = make(tmp_path, ui=True)  # a visitor login is required for everything else
+    resp = client.get(old, follow_redirects=False)
+    assert resp.status_code in (307, 308) and resp.headers["location"].rstrip("/") == new
+    assert client.get(old).status_code == 200  # and the new page loads
+
+
+def test_a_redirect_can_only_ever_point_inside_the_console(tmp_path):
+    client, _ = make(tmp_path, ui=True)
+    for old in ("/admin/vault//evil.example.com", "/admin/vault/%2F%2Fevil.example.com"):
+        resp = client.get(old, follow_redirects=False)
+        assert resp.headers["location"].startswith("/admin/vaults/")
+        assert not resp.headers["location"].startswith("//")

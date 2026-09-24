@@ -14,168 +14,272 @@
               --pass:#66dc9c; --pass-bg:#12291e; --fail:#ff8f95; --fail-bg:#351619; --warn:#f3c463; --warn-bg:#2e2410; --skip:#9aa2b2; --skip-bg:#232833; }
     }
     * { box-sizing: border-box; }
+    html { scroll-padding-top: 72px; }
     body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-    .wrap { max-width: 900px; margin: 0 auto; padding: 0 16px; }
-    header { background:var(--surface); border-bottom:1px solid var(--border); }
-    .top { display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; justify-content:space-between; padding:14px 0; }
-    h1 { margin:0; font-size:1.15rem; }
-    nav { display:flex; gap:6px; }
-    button { font:inherit; font-weight:600; border-radius:9px; padding:8px 16px; cursor:pointer; border:1.5px solid var(--border); background:var(--surface); color:var(--text); }
-    button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
-    button.tab[aria-selected="true"] { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
-    button.link { border:0; background:none; color:var(--accent); padding:2px 6px; font-weight:600; }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent); outline-offset:2px; }
-    main { padding: 22px 0 60px; }
+    a { color:var(--accent); }
+    [hidden] { display:none !important; } /* author display rules below must not un-hide these */
+    .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
     .muted { color:var(--muted); }
+    .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .skip { position:absolute; left:8px; top:-56px; z-index:30; padding:8px 14px; border-radius:8px; background:var(--accent); color:var(--on-accent); font-weight:600; }
+    .skip:focus { top:8px; }
+
+    /* ---- header and navigation */
+    header.site { position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:1px solid var(--border); }
+    .bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 18px; padding-top:10px; padding-bottom:10px; }
+    .brand { font-weight:750; font-size:1.05rem; color:var(--text); text-decoration:none; }
+    .brand span { color:var(--muted); font-weight:600; }
+    #mainnav { display:flex; gap:4px; flex:1 1 auto; overflow-x:auto; }
+    #mainnav a { padding:7px 12px; border-radius:8px; text-decoration:none; color:var(--muted); font-weight:600; white-space:nowrap; }
+    #mainnav a:hover { background:var(--skip-bg); color:var(--text); }
+    #mainnav a[aria-current="page"] { background:var(--accent); color:var(--on-accent); }
+    .who { display:flex; align-items:center; gap:6px; font-size:.9rem; }
+
+    /* ---- page heading */
+    main { padding: 28px 0 72px; }
+    .page-head { margin:0 0 18px; }
+    .crumbs { display:flex; flex-wrap:wrap; gap:2px 8px; margin:0 0 6px; font-size:.85rem; color:var(--muted); }
+    .crumbs a { color:var(--muted); }
+    .crumbs .sep { opacity:.55; }
+    h1 { margin:0; font-size:1.55rem; line-height:1.25; overflow-wrap:anywhere; }
+    h1:focus { outline:none; }
+    .lede { margin:6px 0 0; max-width:72ch; color:var(--muted); }
+
+    /* ---- controls */
+    button, a.btn { font:inherit; font-weight:600; border-radius:9px; padding:8px 16px; cursor:pointer; border:1.5px solid var(--border); background:var(--surface); color:var(--text); text-decoration:none; display:inline-block; }
+    button.primary, a.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+    button.small { padding:4px 12px; font-size:.9rem; }
+    button.link { border:0; background:none; color:var(--accent); padding:2px 6px; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent); outline-offset:2px; }
+    input[type=text], input[type=number], input[type=password], input:not([type]), select { font:inherit; padding:8px 10px; border-radius:8px; border:1.5px solid var(--border); background:var(--bg); color:var(--text); width:100%; max-width:480px; }
+    select:disabled { opacity:.6; }
+    fieldset { border:0; margin:14px 0 0; padding:0; }
+    legend { font-weight:600; padding:0 0 4px; }
+    code { font-family:var(--mono); font-size:.85em; background:var(--skip-bg); padding:1px 6px; border-radius:4px; overflow-wrap:anywhere; }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .inline { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+
+    /* ---- messages */
     .banner { padding:12px 14px; border-radius:10px; margin-bottom:16px; border:1px solid; }
     .banner.error { background:var(--fail-bg); color:var(--fail); border-color:var(--fail); }
     .banner.ok { background:var(--pass-bg); color:var(--pass); border-color:var(--pass); }
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
-    .card h2 { margin:0 0 10px; font-size:1rem; }
-    .summary { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; justify-content:space-between; }
-    .verdict { font-size:1.2rem; font-weight:700; }
-    .verdict.ready { color:var(--pass); } .verdict.notready { color:var(--fail); }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .row { display:grid; grid-template-columns: 64px minmax(120px,190px) 1fr; gap:6px 12px; padding:8px 0; border-top:1px solid var(--border); align-items:start; }
-    .row:first-of-type { border-top:0; }
-    .chip { display:inline-block; text-align:center; padding:1px 8px; border-radius:999px; font-size:.72rem; font-weight:700; font-family:var(--mono); }
-    .s-pass { color:var(--pass); background:var(--pass-bg); } .s-fail { color:var(--fail); background:var(--fail-bg); }
-    .s-warn { color:var(--warn); background:var(--warn-bg); } .s-skip { color:var(--skip); background:var(--skip-bg); }
-    .name { font-weight:600; overflow-wrap:anywhere; }
-    .detail { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
-    .field { display:grid; gap:4px; padding:12px 0; border-top:1px solid var(--border); }
-    .field:first-of-type { border-top:0; }
-    .field label.lbl { font-weight:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .field .help { font-size:.85rem; color:var(--muted); }
-    .field .err { font-size:.85rem; color:var(--fail); font-weight:600; }
-    input[type=text], input[type=number], input[type=password], select { font:inherit; padding:8px 10px; border-radius:8px; border:1.5px solid var(--border); background:var(--bg); color:var(--text); width:100%; max-width:480px; }
-    .badge { font-size:.7rem; font-weight:700; padding:1px 8px; border-radius:999px; background:var(--warn-bg); color:var(--warn); }
-    .inline { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    code { font-family:var(--mono); font-size:.85em; background:var(--skip-bg); padding:1px 6px; border-radius:4px; overflow-wrap:anywhere; }
-    dialog { border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--surface); color:var(--text); width:min(92vw,380px); }
-    dialog::backdrop { background:rgb(0 0 0 / .5); }
-    dialog h2 { margin:0 0 4px; font-size:1.1rem; }
-    dialog label { display:grid; gap:4px; margin:12px 0; font-size:.9rem; font-weight:600; }
-    a.btn, a.btn:visited { display:inline-block; padding:8px 16px; border-radius:9px; border:1.5px solid var(--accent); background:var(--accent); color:var(--on-accent); font-weight:600; text-decoration:none; }
-    a { color:var(--accent); }
-    pre.yaml { margin:8px 0 0; padding:14px; background:var(--skip-bg); border-radius:8px; overflow:auto; max-height:560px; font:.85rem/1.5 var(--mono); white-space:pre; tab-size:2; }
-    textarea.yaml-edit { display:block; width:100%; min-height:520px; margin:6px 0 14px; padding:12px; border:1.5px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:.85rem/1.5 var(--mono); tab-size:2; white-space:pre; overflow:auto; resize:vertical; }
+    .notice { padding:10px 14px; margin:8px 0; border-radius:8px; background:var(--warn-bg); color:var(--warn); }
     .errors { padding:10px 14px; margin:0 0 12px; border-radius:8px; background:var(--fail-bg); color:var(--fail); }
     .errors ul { margin:6px 0 0; padding-left:20px; }
     .errors.ok { background:var(--pass-bg); color:var(--pass); }
-    .notice { padding:10px 14px; margin:8px 0; border-radius:8px; background:var(--warn-bg); color:var(--warn); }
-    .lbl { display:block; font-weight:600; margin-top:8px; }
-    #edit-note { max-width:none; }
-    table.users { width:100%; border-collapse:collapse; font-size:.95rem; }
-    table.users th, table.users td { text-align:left; padding:10px 8px; border-top:1px solid var(--border); vertical-align:middle; }
-    table.users thead th { border-top:0; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
-    table.users tbody th { font-weight:650; overflow-wrap:anywhere; }
-    .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .err { color:var(--fail); font-weight:600; font-size:.88rem; }
+    .help { font-size:.85rem; color:var(--muted); }
+
+    /* ---- cards, tiles, tables */
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:16px; }
+    .card h2 { margin:0 0 10px; font-size:1rem; }
+    .card > div > p:first-child { margin-top:0; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between; margin-bottom:6px; }
+    .toolbar h2 { margin:0; }
+    .tiles { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-bottom:16px; }
+    a.tile { display:flex; flex-direction:column; gap:6px; padding:18px 20px; background:var(--surface); border:1px solid var(--border); border-radius:12px; color:var(--text); text-decoration:none; }
+    a.tile:hover { border-color:var(--accent); }
+    a.tile h2 { margin:0; font-size:1.05rem; }
+    a.tile p { margin:0; font-size:.92rem; color:var(--muted); }
+    a.tile .fact { margin-top:auto; padding-top:8px; font-weight:600; color:var(--text); }
+    a.tile .go { font-size:.9rem; font-weight:600; color:var(--accent); }
+    table.grid { width:100%; border-collapse:collapse; font-size:.95rem; }
+    table.grid th, table.grid td { text-align:left; padding:10px 8px; border-top:1px solid var(--border); vertical-align:middle; }
+    table.grid thead th { border-top:0; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+    table.grid tbody th { font-weight:650; overflow-wrap:anywhere; }
+    table.grid tbody th .muted { font-weight:400; font-size:.85rem; }
+    td.right, th.right { text-align:right; }
     .role { display:inline-block; padding:1px 8px; border-radius:999px; font-size:.75rem; font-weight:700; background:var(--skip-bg); color:var(--skip); }
     .role.admin { background:var(--warn-bg); color:var(--warn); }
-    .choice-row { display:flex !important; grid-template-columns:none; gap:8px; align-items:center; font-weight:500 !important; margin:8px 0 !important; }
-    dialog .err { color:var(--fail); font-weight:600; margin:8px 0; }
+    .chip { display:inline-block; text-align:center; padding:1px 8px; border-radius:999px; font-size:.72rem; font-weight:700; font-family:var(--mono); }
+    .s-pass { color:var(--pass); background:var(--pass-bg); } .s-fail { color:var(--fail); background:var(--fail-bg); }
+    .s-warn { color:var(--warn); background:var(--warn-bg); } .s-skip { color:var(--skip); background:var(--skip-bg); }
+    .detail { color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
+    .badge { font-size:.7rem; font-weight:700; padding:1px 8px; border-radius:999px; background:var(--warn-bg); color:var(--warn); }
+
+    /* ---- status */
+    .summary { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; justify-content:space-between; }
+    .verdict { font-size:1.2rem; font-weight:700; }
+    .verdict.ready { color:var(--pass); } .verdict.notready { color:var(--fail); }
+    .row { display:grid; grid-template-columns: 64px minmax(120px,190px) 1fr; gap:6px 12px; padding:8px 0; border-top:1px solid var(--border); align-items:start; }
+    .row:first-of-type { border-top:0; }
+    .name { font-weight:600; overflow-wrap:anywhere; }
+
+    /* ---- configuration form */
+    .field { display:grid; gap:4px; padding:12px 0; border-top:1px solid var(--border); }
+    .field:first-of-type { border-top:0; }
+    .field label.lbl { font-weight:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .savebar { position:sticky; bottom:0; z-index:5; display:flex; gap:8px; flex-wrap:wrap; padding:12px 16px; margin-top:8px; background:var(--surface); border:1px solid var(--border); border-radius:12px; }
+
+    /* ---- vaults */
+    pre.yaml { margin:8px 0 0; padding:14px; background:var(--skip-bg); border-radius:8px; overflow:auto; max-height:560px; font:.85rem/1.5 var(--mono); white-space:pre; tab-size:2; }
+    textarea.yaml-edit { display:block; width:100%; min-height:520px; margin:6px 0 14px; padding:12px; border:1.5px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:.85rem/1.5 var(--mono); tab-size:2; white-space:pre; overflow:auto; resize:vertical; }
+    .lbl { display:block; font-weight:600; margin-top:8px; }
+    #edit-note { max-width:none; }
+
+    /* ---- dialogs */
+    dialog { border:1px solid var(--border); border-radius:12px; padding:22px; background:var(--surface); color:var(--text); width:min(92vw,440px); }
+    dialog::backdrop { background:rgb(0 0 0 / .5); }
+    dialog h2 { margin:0 0 4px; font-size:1.1rem; }
+    dialog label { display:grid; gap:4px; margin:12px 0; font-size:.9rem; font-weight:600; }
+    dialog label .help { font-weight:400; }
+    dialog .err { margin:8px 0; }
+    dialog .actions { margin-top:16px; }
+    .choice-row { display:flex; gap:8px; align-items:center; font-weight:500; margin:6px 0; }
     code.secret { display:block; padding:12px; font-size:1.05rem; word-break:break-all; user-select:all; }
-    @media (max-width:560px) {
-      table.users thead { display:none; }
-      table.users, table.users tbody, table.users tr, table.users th, table.users td { display:block; }
-      table.users tr { border-top:1px solid var(--border); padding:8px 0; }
-      table.users th, table.users td { border:0; padding:2px 0; }
+
+    @media (max-width:640px) {
+      header.site { position:static; }
+      .who { order:2; margin-left:auto; }
+      #mainnav { order:3; flex-basis:100%; }
+      .tiles { grid-template-columns:1fr; }
+      table.grid thead { display:none; }
+      table.grid, table.grid tbody, table.grid tr, table.grid th, table.grid td { display:block; }
+      table.grid tr { border-top:1px solid var(--border); padding:8px 0; }
+      table.grid th, table.grid td { border:0; padding:2px 0; }
+      td.right { text-align:left; }
+      .row { grid-template-columns: 60px 1fr; } .row .detail { grid-column: 1 / -1; }
+      h1 { font-size:1.35rem; }
     }
-    @media (max-width:560px) { .row { grid-template-columns: 60px 1fr; } .row .detail { grid-column: 1 / -1; } }
   </style>
 </head>
 <body>
-  <header>
-    <div class="wrap top">
-      <h1>Sentinel console</h1>
-      <nav role="tablist" aria-label="Console sections">
-        <button class="tab" role="tab" id="tab-status" aria-selected="true" aria-controls="panel-status">Status</button>
-        <button class="tab" role="tab" id="tab-admin" aria-selected="false" aria-controls="panel-admin">Configuration</button>
-        <button class="tab" role="tab" id="tab-users" aria-selected="false" aria-controls="panel-users">Users</button>
-        <button class="tab" role="tab" id="tab-vaults" aria-selected="false" aria-controls="panel-vaults">Vaults</button>
-        <button id="signout" class="link" hidden>Sign out</button>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site">
+    <div class="wrap bar">
+      <a class="brand" href="/admin" id="brand">Sentinel <span>console</span></a>
+      <nav id="mainnav" aria-label="Console sections">
+        <a id="nav-hub" href="/admin" data-page="hub">Overview</a>
+        <a id="nav-status" href="/status" data-page="status">Status</a>
+        <a id="nav-config" href="/admin/config" data-page="config">Configuration</a>
+        <a id="nav-users" href="/admin/users" data-page="users">Users</a>
+        <a id="nav-vaults" href="/admin/vaults" data-page="vaults">Vaults</a>
       </nav>
+      <div class="who" id="who" hidden>
+        <span class="muted" id="whoami"></span>
+        <button id="signout" class="link" type="button">Sign out</button>
+      </div>
     </div>
   </header>
 
-  <main class="wrap">
+  <main id="main" class="wrap">
+    <div class="page-head">
+      <nav class="crumbs" id="crumbs" aria-label="Breadcrumb" hidden></nav>
+      <h1 id="page-title" tabindex="-1"></h1>
+      <p class="lede" id="page-lede" hidden></p>
+    </div>
     <p id="banner" class="banner" role="alert" hidden></p>
 
-    <section id="panel-status" role="tabpanel" aria-labelledby="tab-status">
+    <!-- ============================================================ overview -->
+    <section id="page-hub" hidden>
+      <div class="tiles">
+        <a class="tile" href="/status">
+          <h2>Status</h2>
+          <p>Are the keys valid and the model reachable? Static checks in an instant, or live checks against the model and search.</p>
+          <span class="fact muted" id="fact-status">Sign in to see details.</span>
+          <span class="go">Open status &rarr;</span>
+        </a>
+        <a class="tile" href="/admin/config">
+          <h2>Configuration</h2>
+          <p>Override the model endpoint and id, keys, and limits without restarting. Secrets are write-only.</p>
+          <span class="fact muted" id="fact-config">Sign in to see details.</span>
+          <span class="go">Open configuration &rarr;</span>
+        </a>
+        <a class="tile" href="/admin/users">
+          <h2>Users</h2>
+          <p>Who can sign in. Add users, change a role, and reset or generate a password.</p>
+          <span class="fact muted" id="fact-users">Sign in to see details.</span>
+          <span class="go">Open users &rarr;</span>
+        </a>
+        <a class="tile" href="/admin/vaults">
+          <h2>Vaults</h2>
+          <p>The policies documents are reviewed against. View the current version, edit it, and read the history.</p>
+          <span class="fact muted" id="fact-vaults">Sign in to see details.</span>
+          <span class="go">Open vaults &rarr;</span>
+        </a>
+      </div>
+      <p><button id="hub-signin" type="button">Sign in to load the details</button></p>
+    </section>
+
+    <!-- ============================================================ status -->
+    <section id="page-status" hidden>
       <div class="card summary">
         <div>
           <div id="verdict" class="verdict">Checking…</div>
           <div id="verdict-sub" class="muted"></div>
         </div>
         <div class="actions">
-          <button id="refresh">Refresh</button>
-          <button id="live" class="primary">Run live checks</button>
+          <button id="refresh" type="button">Refresh</button>
+          <button id="live" type="button" class="primary">Run live checks</button>
         </div>
       </div>
       <p class="muted" id="live-hint">Static checks are free and instant. <strong>Live checks</strong> contact the model endpoint and Tavily (a few tokens and one search) to prove the keys work and the model exists.</p>
       <div id="groups"></div>
     </section>
 
-    <section id="panel-admin" role="tabpanel" aria-labelledby="tab-admin" hidden>
-      <p class="muted">Changes apply immediately and are saved so they survive a restart. Secrets are write-only: they are never shown again. Every change is recorded in the audit log (field names only).</p>
+    <!-- ============================================================ configuration -->
+    <section id="page-config" hidden>
       <form id="config-form" autocomplete="off"></form>
-      <div class="actions" id="config-actions" hidden>
+      <div class="savebar" id="config-actions" hidden>
         <button id="save" class="primary" type="button">Save changes</button>
-        <button id="verify" type="button">Verify with live checks</button>
+        <button id="verify" type="button">Save, then verify with live checks</button>
       </div>
     </section>
 
-    <section id="panel-users" role="tabpanel" aria-labelledby="tab-users" hidden>
-      <p class="muted">The people who can sign in. The admin and visitor logins defined by the server's environment come first. Once you reset a password here, the password set on this page is used from then on, and the environment value is ignored for that user. Passwords are stored only as hashes and can never be shown again.</p>
+    <!-- ============================================================ users -->
+    <section id="page-users" hidden>
+      <div id="users-notice"></div>
       <div class="card">
-        <table class="users" aria-describedby="panel-users">
+        <div class="toolbar">
+          <h2>Authorized users</h2>
+          <button id="user-add" class="primary" type="button">Add user</button>
+        </div>
+        <table class="grid" aria-label="Authorized users">
           <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Password</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
           <tbody id="users-body"></tbody>
         </table>
       </div>
+      <p class="muted">The admin and visitor defined by the server's environment come first. Once you change one of their passwords here, the console's password is used and the environment value is ignored for that user. Passwords are stored only as hashes and can never be shown again.</p>
     </section>
-    <section id="panel-vaults" role="tabpanel" aria-labelledby="tab-vaults" hidden>
+
+    <!-- ============================================================ vaults -->
+    <section id="page-vaults" hidden>
       <div id="vaults-list" hidden>
-        <p class="muted">The policies (vaults) the service reviews documents against. Editing a vault saves a new version that applies to new reviews immediately; the shipped files are never modified, and every earlier version stays viewable.</p>
         <div id="vaults-notice"></div>
         <div class="card">
-          <table class="users">
+          <table class="grid" aria-label="Vaults">
             <thead><tr><th scope="col">Vault</th><th scope="col">Rules</th><th scope="col">Version</th><th scope="col">Last change</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
             <tbody id="vaults-body"></tbody>
           </table>
         </div>
+        <p class="muted">Editing a vault saves a new version that applies to new reviews immediately. The shipped files are never modified, and every earlier version stays viewable.</p>
       </div>
 
       <div id="vault-view" hidden>
-        <p><a href="/admin/vaults" id="view-back">&larr; All vaults</a></p>
         <div class="card">
-          <h2 id="view-title"></h2>
-          <p class="muted" id="view-meta"></p>
           <div id="view-notices"></div>
-          <div class="actions"><a id="view-edit" class="btn" href="#" hidden>Edit this vault</a></div>
+          <div class="actions"><a id="view-edit" class="btn primary" href="#" hidden>Edit this vault</a></div>
         </div>
         <div class="card"><h2>Rules</h2>
-          <table class="users"><thead><tr><th scope="col">Rule</th><th scope="col">Kind</th><th scope="col">Severity</th></tr></thead><tbody id="view-rules"></tbody></table>
+          <table class="grid" aria-label="Rules"><thead><tr><th scope="col">Rule</th><th scope="col">Kind</th><th scope="col">Severity</th></tr></thead><tbody id="view-rules"></tbody></table>
         </div>
         <div class="card"><h2>YAML <span class="muted" id="view-version"></span></h2><pre class="yaml" id="view-yaml"></pre></div>
         <div class="card"><h2>Version history</h2>
-          <table class="users"><thead><tr><th scope="col">Version</th><th scope="col">Saved by</th><th scope="col">When</th><th scope="col">Note</th><th scope="col"><span class="sr">View</span></th></tr></thead><tbody id="view-history"></tbody></table>
+          <table class="grid" aria-label="Version history"><thead><tr><th scope="col">Version</th><th scope="col">Saved by</th><th scope="col">When</th><th scope="col">Note</th><th scope="col"><span class="sr">View</span></th></tr></thead><tbody id="view-history"></tbody></table>
         </div>
       </div>
 
       <div id="vault-edit" hidden>
-        <p><a href="#" id="edit-back">&larr; Back to the vault</a></p>
         <div class="card">
-          <h2 id="edit-title"></h2>
           <p class="muted" id="edit-intro"></p>
           <div id="edit-errors" class="errors" role="alert" hidden></div>
           <label class="lbl" for="edit-yaml">Vault YAML</label>
           <textarea id="edit-yaml" class="yaml-edit" spellcheck="false" wrap="off" autocomplete="off"></textarea>
           <label class="lbl" for="edit-note">What changed? (optional, kept in the version history)</label>
           <input id="edit-note" type="text" maxlength="200" autocomplete="off">
-          <div class="actions">
+          <div class="actions" style="margin-top:14px">
             <button type="button" id="edit-validate">Validate</button>
             <button type="button" id="edit-save" class="primary">Save as new version</button>
             <button type="button" id="edit-cancel">Cancel</button>
@@ -186,17 +290,35 @@
     </section>
   </main>
 
-  <dialog id="reset" aria-labelledby="reset-title">
-    <form id="reset-form" method="dialog">
-      <h2 id="reset-title">Reset password</h2>
-      <p class="err" id="reset-error" role="alert" hidden></p>
-      <label class="choice-row"><input type="radio" name="how" value="generate" checked> Generate a strong random password</label>
-      <label class="choice-row"><input type="radio" name="how" value="choose"> Choose a password</label>
-      <label id="reset-choose" hidden>New password <input id="reset-pass" type="password" autocomplete="new-password"></label>
-      <p class="muted" id="reset-rule"></p>
+  <dialog id="user-dialog" aria-labelledby="ud-title">
+    <form id="ud-form" method="dialog" novalidate>
+      <h2 id="ud-title"></h2>
+      <p class="err" id="ud-error" role="alert" hidden></p>
+      <label id="ud-name-row">Username
+        <input id="ud-name" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="64">
+        <span class="help">Use letters, digits, and the characters . _ @ - (no spaces).</span>
+        <span class="err" id="ud-name-err" role="alert" hidden></span>
+      </label>
+      <label>Role
+        <select id="ud-role">
+          <option value="visitor">Visitor</option>
+          <option value="admin">Admin</option>
+        </select>
+        <span class="help" id="ud-role-help"></span>
+        <span class="err" id="ud-role-err" role="alert" hidden></span>
+      </label>
+      <fieldset>
+        <legend>Password</legend>
+        <label class="choice-row" id="ud-keep-row"><input type="radio" name="pw" value="keep"> Keep the current password</label>
+        <label class="choice-row"><input type="radio" name="pw" value="generate"> Generate a strong random password</label>
+        <label class="choice-row"><input type="radio" name="pw" value="choose"> Choose a password</label>
+        <label id="ud-choose" hidden>New password <input id="ud-pass" type="password" autocomplete="new-password"></label>
+        <span class="help" id="ud-rule"></span>
+        <span class="err" id="ud-pass-err" role="alert" hidden></span>
+      </fieldset>
       <div class="actions">
-        <button type="submit" class="primary">Reset password</button>
-        <button type="button" id="reset-cancel">Cancel</button>
+        <button type="submit" class="primary" id="ud-submit">Save</button>
+        <button type="button" id="ud-cancel">Cancel</button>
       </div>
     </form>
   </dialog>
@@ -227,12 +349,14 @@
   <script>
 "use strict";
 
-// Sentinel console. Credentials live in memory only (never in storage or cookies) and are sent as
-// an explicit header, so the browser never attaches them to requests from other sites.
-// All server data is rendered with textContent.
+// Sentinel console: one shell, five pages, chosen by the URL. Credentials live in memory only
+// (never in storage or cookies) and are sent as an explicit header, so the browser never attaches
+// them to requests from other sites. Pages are switched without reloading so the sign-in survives
+// moving around. All server data is rendered with textContent.
 
 const $ = (id) => document.getElementById(id);
 const auth = { user: null, pass: null };
+let authVersion = 0;
 const GROUP_ORDER = ["Model", "Search", "Access", "Storage", "Configuration", "General"];
 let currentConfig = [];
 
@@ -257,7 +381,21 @@ function banner(message, kind) {
   b.hidden = !message;
 }
 
+const fmtDate = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+};
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const toBase64 = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+
+class Stop extends Error {}
+
+// Run a page loader; a Stop is an expected, user-facing failure shown in the banner.
+async function run(fn) {
+  try { await fn(); } catch (err) { if (err instanceof Stop) banner(err.message); else throw err; }
+}
+
+// ------------------------------------------------------------------------------ sign in and API
 
 function askLogin(message) {
   return new Promise((resolve) => {
@@ -282,10 +420,21 @@ function askLogin(message) {
   });
 }
 
-class Stop extends Error {}
+// Several requests can hit a 401 at once; they share one dialog.
+let loginPending = null;
+function signIn(message) {
+  if (!loginPending) loginPending = askLogin(message).finally(() => { loginPending = null; });
+  return loginPending;
+}
+
+function showWho() {
+  $("who").hidden = false;
+  $("whoami").textContent = `Signed in as ${auth.user}`;
+}
 
 async function api(path, { method = "GET", json } = {}) {
   for (;;) {
+    const version = authVersion;
     const headers = new Headers({ Accept: "application/json", "X-Sentinel-Admin": "1" });
     if (auth.user !== null) headers.set("Authorization", "Basic " + toBase64(`${auth.user}:${auth.pass}`));
     if (json !== undefined) headers.set("Content-Type", "application/json");
@@ -301,13 +450,57 @@ async function api(path, { method = "GET", json } = {}) {
         throw new Stop("The admin console is disabled on this server. Set ADMIN_PASSWORD in its environment to enable it.");
       }
     }
-    if (resp.status !== 401) return resp;
-    const creds = await askLogin(auth.user !== null ? "That username or password was not accepted." : "");
+    if (resp.status !== 401) {
+      if (auth.user !== null) showWho();
+      return resp;
+    }
+    if (version !== authVersion) continue; // someone signed in while this request was in flight
+    const creds = await signIn(auth.user !== null ? "That username or password was not accepted." : "");
     if (!creds) throw new Stop("Sign in is required to use the console.");
     auth.user = creds.user;
     auth.pass = creds.pass;
-    $("signout").hidden = false;
+    authVersion++;
   }
+}
+
+async function getJson(path, what) {
+  const resp = await api(path);
+  if (!resp.ok) throw new Stop(`Could not load ${what} (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+// ------------------------------------------------------------------------------ overview
+
+function setFact(id, text, cls) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = "fact " + (cls || "");
+}
+
+async function loadHub(alive) {
+  $("hub-signin").hidden = true;
+  await run(async () => {
+    // The first request signs in on its own, so a wrong password counts once, not once per request.
+    const status = await getJson("/v1/admin/status", "the status");
+    if (!alive()) return;
+    const c = status.counts;
+    setFact("fact-status",
+      status.ready ? `Ready${c.warn ? ` · ${plural(c.warn, "warning", "warnings")}` : ""}` : `Not ready · ${c.fail} failed`,
+      status.ready ? "ok" : "bad");
+    const [config, users, vaults] = await Promise.all([
+      getJson("/v1/admin/config", "the configuration"),
+      getJson("/v1/admin/users", "the users"),
+      getJson("/v1/admin/vaults", "the vaults"),
+    ]);
+    if (!alive()) return;
+    const overridden = config.fields.filter((f) => f.overridden).length;
+    setFact("fact-config", overridden ? `${plural(overridden, "setting", "settings")} overridden` : "Using the server's environment");
+    const admins = users.users.filter((u) => u.role === "admin").length;
+    setFact("fact-users", `${plural(users.users.length, "user", "users")} · ${admins} admin, ${users.users.length - admins} visitor`);
+    const edited = vaults.vaults.filter((v) => v.source === "edited").length;
+    setFact("fact-vaults", `${plural(vaults.vaults.length, "vault", "vaults")}${edited ? ` · ${edited} edited` : ""}`);
+  });
+  if (alive() && auth.user === null) $("hub-signin").hidden = false;
 }
 
 // ------------------------------------------------------------------------------ status
@@ -334,27 +527,24 @@ function renderStatus(payload) {
   }
 }
 
-async function loadStatus(live) {
+async function loadStatus(live, alive = () => true) {
   banner("");
-  $("live").disabled = $("refresh").disabled = $("verify").disabled = true;
+  $("live").disabled = $("refresh").disabled = true;
   if (live) $("verdict-sub").textContent = "Running live checks… this can take up to 20 seconds.";
-  try {
+  await run(async () => {
     const resp = await api(live ? "/v1/admin/status/live" : "/v1/admin/status", { method: live ? "POST" : "GET" });
     if (resp.status === 409) throw new Stop("A live check is already running. Try again in a moment.");
     if (!resp.ok) throw new Stop(`Status failed (HTTP ${resp.status}).`);
-    renderStatus(await resp.json());
-  } catch (err) {
-    if (err instanceof Stop) banner(err.message);
-    else throw err;
-  } finally {
-    $("live").disabled = $("refresh").disabled = $("verify").disabled = false;
-  }
+    const payload = await resp.json();
+    if (alive()) renderStatus(payload);
+  });
+  $("live").disabled = $("refresh").disabled = false;
 }
 
 // ------------------------------------------------------------------------------ configuration
 
 function inputFor(f) {
-  if (!f.editable) return h("code", {}, String(f.value ?? ""));
+  if (!f.editable) return h("code", {}, String(f.value ?? "") || "(none)");
   if (f.secret) {
     return h("div", { class: "inline" },
       h("input", { type: "password", "data-name": f.name, autocomplete: "new-password",
@@ -428,28 +618,32 @@ function collectChanges() {
   return { set, clear };
 }
 
-async function loadConfig() {
-  banner("");
-  try {
-    const resp = await api("/v1/admin/config");
-    if (!resp.ok) throw new Stop(`Could not load the configuration (HTTP ${resp.status}).`);
-    renderConfig((await resp.json()).fields);
-  } catch (err) {
-    if (err instanceof Stop) banner(err.message);
-    else throw err;
-  }
+function configDirty() {
+  if (!currentConfig.length || $("page-config").hidden) return false;
+  const c = collectChanges();
+  return Object.keys(c.set).length > 0 || c.clear.length > 0;
 }
 
+async function loadConfig(alive = () => true) {
+  banner("");
+  await run(async () => {
+    const data = await getJson("/v1/admin/config", "the configuration");
+    if (alive()) renderConfig(data.fields);
+  });
+}
+
+// Returns true when the changes were saved (or there was nothing to save).
 async function saveConfig(changes) {
   changes = changes || collectChanges();
   if (!Object.keys(changes.set).length && !changes.clear.length) {
     banner("No changes to save.", "ok");
-    return;
+    return true;
   }
   if ("llm_base_url" in changes.set &&
-      !confirm("Changing the model endpoint changes where document text is sent. Continue?")) return;
-  for (const e of document.querySelectorAll(".err")) { e.hidden = true; e.textContent = ""; }
-  try {
+      !confirm("Changing the model endpoint changes where document text is sent. Continue?")) return false;
+  for (const e of document.querySelectorAll("#config-form .err")) { e.hidden = true; e.textContent = ""; }
+  let saved = false;
+  await run(async () => {
     const resp = await api("/v1/admin/config", { method: "PUT", json: changes });
     const data = await resp.json().catch(() => ({}));
     if (resp.status === 422 && data.detail?.errors) {
@@ -465,88 +659,148 @@ async function saveConfig(changes) {
     banner(data.changed.length
       ? `Saved: ${data.changed.join(", ")}. Run the live checks to verify the new settings.`
       : "Saved. Nothing effectively changed.", "ok");
-  } catch (err) {
-    if (err instanceof Stop) banner(err.message);
-    else throw err;
-  }
+    saved = true;
+  });
+  return saved;
 }
-
-// ------------------------------------------------------------------------------ tabs and start
 
 // ------------------------------------------------------------------------------ users
 
 let minPasswordLength = 12;
 
-function fmtDate(iso) {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
-}
+const ROLE_HELP = {
+  visitor: "Can sign in to upload documents and run reviews.",
+  admin: "Full access to this console: settings (including where documents are sent), users, and vaults. Treat it like a root login.",
+};
 
 function renderUsers(users) {
+  const notice = $("users-notice");
+  notice.replaceChildren();
+  if (!users.some((u) => u.role === "visitor")) {
+    notice.append(h("p", { class: "notice" }, "There is no visitor login, so anyone who can reach this server can run reviews. Add a visitor to turn the login on."));
+  }
   const body = $("users-body");
   body.replaceChildren();
   for (const u of users) {
-    const button = h("button", { type: "button" }, "Reset password");
-    button.addEventListener("click", () => resetPassword(u.username));
+    const edit = h("button", { type: "button", class: "small", "data-edit": u.username }, "Edit");
+    edit.setAttribute("aria-label", `Edit ${u.username}`);
+    edit.addEventListener("click", () => editUser("edit", u));
     body.append(h("tr", {},
       h("th", { scope: "row" }, u.username, u.username === auth.user ? " (you)" : ""),
       h("td", {}, h("span", { class: `role ${u.role}` }, u.role)),
       h("td", { class: "detail" },
         u.source === "environment" ? "From the server's environment" : "Set in this console",
         h("br"), `changed ${fmtDate(u.password_changed_at)}`),
-      h("td", {}, button)));
+      h("td", { class: "right" }, edit)));
   }
 }
 
-async function loadUsers() {
+async function loadUsers(alive = () => true) {
   banner("");
-  try {
-    const resp = await api("/v1/admin/users");
-    if (!resp.ok) throw new Stop(`Could not load the users (HTTP ${resp.status}).`);
-    const data = await resp.json();
+  await run(async () => {
+    const data = await getJson("/v1/admin/users", "the users");
+    if (!alive()) return;
     minPasswordLength = data.min_password_length || minPasswordLength;
     renderUsers(data.users);
-  } catch (err) {
-    if (err instanceof Stop) banner(err.message);
-    else throw err;
-  }
+  });
 }
 
-// Ask how to reset: a generated password, or one the admin chooses. Resolves to null on cancel.
-function askReset(username, message) {
+// The add/edit form. It stays open while the server checks it, so a mistake shows next to the
+// field that caused it. Resolves to { data, sent, chosen } once saved, or null on cancel.
+function userDialog(mode, user) {
   return new Promise((resolve) => {
-    const dialog = $("reset");
-    $("reset-title").textContent = `Reset password for ${username}`;
-    $("reset-rule").textContent = `A chosen password needs at least ${minPasswordLength} characters and must not be easy to guess.`;
-    const error = $("reset-error");
-    error.textContent = message || "";
-    error.hidden = !message;
-    dialog.querySelector('input[value="generate"]').checked = true;
-    $("reset-choose").hidden = true;
-    $("reset-pass").value = "";
-    const sync = () => { $("reset-choose").hidden = dialog.querySelector('input[name="how"]:checked').value !== "choose"; };
-    const radios = [...dialog.querySelectorAll('input[name="how"]')];
+    const dialog = $("user-dialog");
+    const form = $("ud-form");
+    const adding = mode === "add";
+    const role = $("ud-role");
+    const radios = [...form.querySelectorAll('input[name="pw"]')];
+    const pick = (value) => { radios.find((r) => r.value === value).checked = true; };
+    const picked = () => radios.find((r) => r.checked).value;
+    const lock = adding ? null : user.username === auth.user ? "You cannot change your own role." : user.role_locked;
+
+    $("ud-title").textContent = adding ? "Add user" : `Edit ${user.username}`;
+    $("ud-submit").textContent = adding ? "Add user" : "Save changes";
+    $("ud-name-row").hidden = !adding;
+    $("ud-name").value = "";
+    $("ud-keep-row").hidden = adding;
+    pick(adding ? "generate" : "keep");
+    $("ud-choose").hidden = true;
+    $("ud-pass").value = "";
+    $("ud-rule").textContent = `A chosen password needs at least ${minPasswordLength} characters and must not be easy to guess.`;
+    role.value = adding ? "visitor" : user.role;
+    role.disabled = Boolean(lock);
+
+    const clearErrors = () => {
+      for (const id of ["ud-error", "ud-name-err", "ud-role-err", "ud-pass-err"]) { $(id).hidden = true; $(id).textContent = ""; }
+    };
+    const showError = (field, message) => {
+      const slot = { username: "ud-name-err", role: "ud-role-err", password: "ud-pass-err" }[field] || "ud-error";
+      $(slot).textContent = message;
+      $(slot).hidden = false;
+    };
+    const syncRole = () => { $("ud-role-help").textContent = lock || ROLE_HELP[role.value]; };
+    const syncPassword = () => { $("ud-choose").hidden = picked() !== "choose"; };
+    clearErrors();
+    syncRole();
+
     const done = (value) => {
-      radios.forEach((r) => r.removeEventListener("change", sync));
+      radios.forEach((r) => r.removeEventListener("change", syncPassword));
+      role.removeEventListener("change", syncRole);
       dialog.removeEventListener("cancel", onCancel);
-      $("reset-form").removeEventListener("submit", onSubmit);
-      $("reset-cancel").removeEventListener("click", onCancelClick);
-      $("reset-pass").value = "";
+      form.removeEventListener("submit", onSubmit);
+      $("ud-cancel").removeEventListener("click", onCancelClick);
+      $("ud-pass").value = "";
       if (dialog.open) dialog.close();
       resolve(value);
     };
-    const onSubmit = (e) => {
+
+    const onSubmit = async (e) => {
       e.preventDefault();
-      const choose = dialog.querySelector('input[name="how"]:checked').value === "choose";
-      done(choose ? { generate: false, password: $("reset-pass").value } : { generate: true });
+      clearErrors();
+      const how = picked();
+      const sent = {};
+      if (adding) {
+        sent.username = $("ud-name").value.trim();
+        sent.role = role.value;
+      } else if (!role.disabled && role.value !== user.role) {
+        sent.role = role.value;
+      }
+      if (how === "generate") sent.generate = true;
+      if (how === "choose") sent.password = $("ud-pass").value;
+      if (!adding && !("role" in sent) && how === "keep") {
+        showError("user", "Nothing to change.");
+        return;
+      }
+      $("ud-submit").disabled = true;
+      try {
+        const resp = adding
+          ? await api("/v1/admin/users", { method: "POST", json: sent })
+          : await api(`/v1/admin/users/${encodeURIComponent(user.username)}`, { method: "PUT", json: sent });
+        const data = await resp.json().catch(() => ({}));
+        if ((resp.status === 422 || resp.status === 409) && data.detail?.errors) {
+          for (const [field, message] of Object.entries(data.detail.errors)) showError(field, message);
+          return;
+        }
+        if (resp.status === 422) { showError("user", "Some of that was not accepted. Nothing was changed."); return; }
+        if (!resp.ok) { showError("user", `That failed (HTTP ${resp.status}). Nothing was changed.`); return; }
+        done({ data, sent, chosen: how === "choose" ? sent.password : null });
+      } catch (err) {
+        if (err instanceof Stop) showError("user", err.message);
+        else throw err;
+      } finally {
+        $("ud-submit").disabled = false;
+      }
     };
     const onCancel = (e) => { e.preventDefault(); done(null); };
     const onCancelClick = () => done(null);
-    radios.forEach((r) => r.addEventListener("change", sync));
+
+    radios.forEach((r) => r.addEventListener("change", syncPassword));
+    role.addEventListener("change", syncRole);
     dialog.addEventListener("cancel", onCancel);
-    $("reset-form").addEventListener("submit", onSubmit);
-    $("reset-cancel").addEventListener("click", onCancelClick);
+    form.addEventListener("submit", onSubmit);
+    $("ud-cancel").addEventListener("click", onCancelClick);
     dialog.showModal();
+    (adding ? $("ud-name") : $("ud-submit")).focus();
   });
 }
 
@@ -581,34 +835,26 @@ function showNewPassword(username, password) {
   });
 }
 
-async function resetPassword(username) {
-  banner(""); // do not leave a previous "was reset" message on screen while a new reset is under way
-  let message = "";
-  for (;;) {
-    const choice = await askReset(username, message);
-    if (!choice) return;
-    try {
-      const resp = await api(`/v1/admin/users/${encodeURIComponent(username)}/password`, {
-        method: "POST",
-        json: choice.generate ? { generate: true } : { password: choice.password },
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (resp.status === 422 && data.detail?.errors) {
-        message = `That password was not accepted: ${data.detail.errors.password}. Nothing was changed.`;
-        continue; // ask again, with the reason shown
-      }
-      if (!resp.ok) throw new Stop(`Reset failed (HTTP ${resp.status}).`);
-      // Resetting your own password ends your current sign-in: keep this page signed in.
-      if (username === auth.user) auth.pass = choice.generate ? data.password : choice.password;
-      if (data.password) await showNewPassword(username, data.password);
-      await loadUsers(); // reloading clears the banner, so show the message afterwards
-      banner(`The password for ${username} was reset. The old one no longer works.`, "ok");
-      return;
-    } catch (err) {
-      if (err instanceof Stop) { banner(err.message); return; }
-      throw err;
-    }
+async function editUser(mode, user) {
+  banner(""); // do not leave an earlier message on screen while a new change is under way
+  const result = await userDialog(mode, user);
+  if (!result) return;
+  const { data, sent, chosen } = result;
+  const name = data.user.username;
+  // Changing your own password ends your current sign-in: keep this page signed in.
+  if (name === auth.user && (data.password || chosen)) auth.pass = data.password || chosen;
+  if (data.password) await showNewPassword(name, data.password);
+  await loadUsers(); // reloading clears the banner, so show the message afterwards
+  let text;
+  if (mode === "add") {
+    text = `added as ${data.user.role}, ${sent.generate ? "with a generated password (shown once)" : "with the password you chose"}`;
+  } else {
+    const parts = [];
+    if (sent.role) parts.push(`role is now ${sent.role}`);
+    if (sent.generate || sent.password) parts.push("password changed (the old one no longer works)");
+    text = parts.join("; ");
   }
+  banner(`${name}: ${text}.`, "ok");
 }
 
 // ------------------------------------------------------------------------------ vaults
@@ -616,46 +862,28 @@ async function resetPassword(username) {
 // /admin/vaults/<id>/edit (editor).
 
 const vaultState = { id: null, baseVersion: null, original: "", loaded: false };
-
-function parseVaultPath(path) {
-  const m = path.match(/^\/admin\/vaults(?:\/([^/]+?)(\/edit)?)?\/?$/);
-  return m ? { id: m[1] ? decodeURIComponent(m[1]) : null, edit: Boolean(m[2]) } : null;
-}
-
 const vaultUrl = (id, suffix = "") => `/admin/vaults/${encodeURIComponent(id)}${suffix}`;
 const vaultApi = (id, suffix = "") => `/v1/admin/vaults/${encodeURIComponent(id)}${suffix}`;
 
 function editorDirty() {
-  return vaultState.loaded && !$("vault-edit").hidden && $("edit-yaml").value !== vaultState.original;
-}
-
-function navigate(path) {
-  if (editorDirty() && !confirm("You have unsaved changes to this vault. Discard them?")) return false;
-  vaultState.loaded = false;
-  history.pushState(null, "", path);
-  renderVaultRoute();
-  return true;
+  return vaultState.loaded && !$("vault-edit").hidden && !$("page-vaults").hidden && $("edit-yaml").value !== vaultState.original;
 }
 
 function link(text, path, attrs) {
-  const a = h("a", { href: path, ...attrs }, text);
-  a.addEventListener("click", (e) => { e.preventDefault(); navigate(path); });
-  return a;
+  return h("a", { href: path, ...attrs }, text);
 }
 
 function showVaultView(which) {
   for (const id of ["vaults-list", "vault-view", "vault-edit"]) $(id).hidden = id !== which;
 }
 
-function versionBadge(v) {
-  return v.source === "edited" ? `edited, version ${v.version}` : "shipped, version 1";
-}
+const versionBadge = (v) => (v.source === "edited" ? `edited, version ${v.version}` : "shipped, version 1");
 
-async function loadVaultList() {
+async function loadVaultList(alive) {
   showVaultView("vaults-list");
-  const resp = await api("/v1/admin/vaults");
-  if (!resp.ok) throw new Stop(`Could not load the vaults (HTTP ${resp.status}).`);
-  const data = await resp.json();
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults"]], ...PAGES.vaults });
+  const data = await getJson("/v1/admin/vaults", "the vaults");
+  if (!alive()) return;
   const notice = $("vaults-notice");
   notice.replaceChildren();
   if (!data.editable) notice.append(h("p", { class: "notice" }, "Editing is not available on this deployment (there is no writable state directory). Vaults can be viewed only."));
@@ -670,7 +898,7 @@ async function loadVaultList() {
       h("td", {}, String(v.rule_count)),
       h("td", {}, h("span", { class: `role ${v.source === "edited" ? "admin" : ""}` }, versionBadge(v))),
       h("td", { class: "detail" }, v.source === "edited" ? `${v.updated_by || "?"}, ${fmtDate(v.updated_at)}` : "not edited"),
-      h("td", {}, actions)));
+      h("td", { class: "right" }, actions)));
   }
 }
 
@@ -681,25 +909,24 @@ async function fetchVault(id, version) {
   return resp.json();
 }
 
-async function loadVaultView(id, version) {
+async function loadVaultView(id, version, alive) {
   showVaultView("vault-view");
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], [id]], title: id, lede: "" });
   const d = await fetchVault(id, version);
-  $("view-title").replaceChildren(d.title, " ", h("code", {}, d.id));
-  $("view-meta").textContent = d.description || "";
+  if (!alive()) return;
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], [d.id]], title: d.title, lede: d.description || "" });
   const notices = $("view-notices");
   notices.replaceChildren(
     h("p", {}, h("strong", {}, `Current version: ${versionBadge(d)}`),
       d.source === "edited" ? ` (saved by ${d.updated_by || "?"} on ${fmtDate(d.updated_at)}${d.note ? `: ${d.note}` : ""})` : ""));
   if (!d.is_current) {
-    const back = link("Show the current version", vaultUrl(d.id));
-    notices.append(h("p", { class: "notice" }, `You are viewing an earlier version (${d.viewing_version}), not the one in use. `, back));
+    notices.append(h("p", { class: "notice" }, `You are viewing an earlier version (${d.viewing_version}), not the one in use. `,
+      link("Show the current version", vaultUrl(d.id))));
   }
   if (d.shipped_changed) notices.append(h("p", { class: "notice" }, "The shipped file for this vault has changed since it was edited here. The edited version is the one in use; the shipped change is ignored."));
   const edit = $("view-edit");
   edit.hidden = !(d.editable && d.is_current);
   edit.setAttribute("href", vaultUrl(d.id, "/edit"));
-  $("view-back").onclick = (e) => { e.preventDefault(); navigate("/admin/vaults"); };
-  edit.onclick = (e) => { e.preventDefault(); navigate(vaultUrl(d.id, "/edit")); };
   $("view-rules").replaceChildren(...d.rules.map((r) => h("tr", {},
     h("th", { scope: "row" }, r.title, h("br"), h("span", { class: "muted" }, r.id)),
     h("td", {}, r.kind + (r.external_check ? " + public check" : "")),
@@ -711,7 +938,7 @@ async function loadVaultView(id, version) {
     h("td", {}, v.saved_by || "shipped file"),
     h("td", { class: "detail" }, v.saved_at ? fmtDate(v.saved_at) : ""),
     h("td", { class: "detail" }, v.note || ""),
-    h("td", {}, v.version === d.viewing_version ? "viewing" : link("View", vaultUrl(d.id) + `?version=${v.version}`)))));
+    h("td", { class: "right" }, v.version === d.viewing_version ? "viewing" : link("View", vaultUrl(d.id) + `?version=${v.version}`)))));
 }
 
 function showEditorErrors(errors, ok) {
@@ -727,136 +954,195 @@ function showEditorErrors(errors, ok) {
   box.hidden = false;
 }
 
-async function loadVaultEdit(id) {
+async function loadVaultEdit(id, alive) {
   showVaultView("vault-edit");
+  vaultState.loaded = false;
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], [id, vaultUrl(id)], ["Edit"]], title: `Edit ${id}`, lede: "" });
   const d = await fetchVault(id);
+  if (!alive()) return;
   if (!d.editable) throw new Stop("Editing is not available on this deployment.");
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], [d.id, vaultUrl(d.id)], ["Edit"]], title: `Edit ${d.title}`, lede: "" });
   vaultState.id = d.id;
   vaultState.baseVersion = d.version;
   vaultState.original = d.yaml;
   vaultState.loaded = true;
-  $("edit-title").textContent = `Edit ${d.title} (${d.id})`;
   $("edit-intro").textContent = `You are editing version ${d.version}. Saving creates version ${d.version + 1}, which applies to new reviews immediately; the current version stays in the history.`;
   $("edit-yaml").value = d.yaml;
   $("edit-note").value = "";
   $("edit-errors").hidden = true;
   $("edit-status").textContent = "";
-  $("edit-back").onclick = (e) => { e.preventDefault(); navigate(vaultUrl(d.id)); };
 }
 
-async function renderVaultRoute() {
+async function loadVaults(route, alive) {
   banner("");
-  const route = parseVaultPath(location.pathname) || { id: null, edit: false };
   const version = Number(new URLSearchParams(location.search).get("version")) || null;
-  try {
-    if (!route.id) await loadVaultList();
-    else if (route.edit) await loadVaultEdit(route.id);
-    else await loadVaultView(route.id, version);
-  } catch (err) {
-    if (err instanceof Stop) banner(err.message);
-    else throw err;
-  }
+  await run(async () => {
+    if (!route.id) await loadVaultList(alive);
+    else if (route.edit) await loadVaultEdit(route.id, alive);
+    else await loadVaultView(route.id, version, alive);
+  });
 }
 
 async function validateVault() {
   $("edit-status").textContent = "Checking…";
-  const resp = await api(vaultApi(vaultState.id, "/validate"), { method: "POST", json: { yaml: $("edit-yaml").value } });
-  const data = await resp.json().catch(() => ({}));
+  let ok = false;
+  await run(async () => {
+    const resp = await api(vaultApi(vaultState.id, "/validate"), { method: "POST", json: { yaml: $("edit-yaml").value } });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
+    if (!resp.ok) { showEditorErrors(`Validation failed (HTTP ${resp.status}).`); return; }
+    showEditorErrors(`Valid: "${data.title}" with ${data.rule_count} rules. Nothing has been saved yet.`, true);
+    ok = true;
+  });
   $("edit-status").textContent = "";
-  if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return false; }
-  if (!resp.ok) { showEditorErrors(`Validation failed (HTTP ${resp.status}).`); return false; }
-  showEditorErrors(`Valid: "${data.title}" with ${data.rule_count} rules. Nothing has been saved yet.`, true);
-  return true;
+  return ok;
 }
 
 async function saveVault() {
   $("edit-status").textContent = "Saving…";
-  const resp = await api(vaultApi(vaultState.id), {
-    method: "PUT",
-    json: { yaml: $("edit-yaml").value, base_version: vaultState.baseVersion, note: $("edit-note").value },
+  let saved = null;
+  await run(async () => {
+    const resp = await api(vaultApi(vaultState.id), {
+      method: "PUT",
+      json: { yaml: $("edit-yaml").value, base_version: vaultState.baseVersion, note: $("edit-note").value },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
+    if (resp.status === 413) { showEditorErrors("The vault is too large to save."); return; }
+    if (resp.status === 409) {
+      showEditorErrors(`Not saved: version ${data.detail.current} was saved while you were editing. Copy your changes somewhere safe, then reopen the editor to start from the latest version.`);
+      return;
+    }
+    if (resp.status === 501) { showEditorErrors("Editing is not available on this deployment."); return; }
+    if (!resp.ok) { showEditorErrors(`Save failed (HTTP ${resp.status}).`); return; }
+    saved = data.saved_version;
   });
-  const data = await resp.json().catch(() => ({}));
   $("edit-status").textContent = "";
-  if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
-  if (resp.status === 413) { showEditorErrors("The vault is too large to save."); return; }
-  if (resp.status === 409) {
-    showEditorErrors(`Not saved: version ${data.detail.current} was saved while you were editing. Copy your changes somewhere safe, then reopen the editor to start from the latest version.`);
-    return;
-  }
-  if (resp.status === 501) { showEditorErrors("Editing is not available on this deployment."); return; }
-  if (!resp.ok) { showEditorErrors(`Save failed (HTTP ${resp.status}).`); return; }
+  if (saved === null) return;
   vaultState.loaded = false; // saved: nothing left to discard
   history.pushState(null, "", vaultUrl(vaultState.id));
-  await renderVaultRoute();
-  banner(`Saved as version ${data.saved_version}. It applies to new reviews immediately.`, "ok");
+  await render();
+  banner(`Saved as version ${saved}. It applies to new reviews immediately.`, "ok");
 }
 
-window.addEventListener("beforeunload", (e) => { if (editorDirty()) { e.preventDefault(); e.returnValue = ""; } });
+// ------------------------------------------------------------------------------ pages and routing
 
-function tabForPath(path) {
-  const clean = path.replace(/\/+$/, "");
-  if (clean === "/admin/user") return "users";
-  if (clean === "/admin") return "admin";
-  if (clean === "/admin/vaults" || clean.startsWith("/admin/vaults/")) return "vaults";
-  return "status";
+const PAGES = {
+  hub: { nav: "hub", title: "Overview", lede: "Manage this Sentinel deployment: check it is healthy, change its settings, and control who can use it and what it reviews against." },
+  status: { nav: "status", title: "Status", lede: "Whether the service has working keys and existing models." },
+  config: { nav: "config", title: "Configuration", lede: "Override the values set in the server's environment. Changes apply immediately and survive a restart; every change is recorded in the audit log (field names only). Secrets are write-only: they are never shown again." },
+  users: { nav: "users", title: "Users", lede: "Who can sign in to the service and to this console." },
+  vaults: { nav: "vaults", title: "Vaults", lede: "The policies documents are reviewed against." },
+};
+
+function parseRoute(pathname) {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  if (p === "/admin") return { page: "hub" };
+  if (p === "/status") return { page: "status" };
+  if (p === "/admin/config") return { page: "config" };
+  if (p === "/admin/users") return { page: "users" };
+  const m = p.match(/^\/admin\/vaults(?:\/([^/]+?)(\/edit)?)?$/);
+  if (m) return { page: "vaults", id: m[1] ? decodeURIComponent(m[1]) : null, edit: Boolean(m[2]) };
+  return null;
 }
 
-function show(tab, autoload = true) {
-  const paths = { status: "/status", admin: "/admin", users: "/admin/user", vaults: "/admin/vaults" };
-  for (const name of Object.keys(paths)) {
-    $(`panel-${name}`).hidden = name !== tab;
-    $(`tab-${name}`).setAttribute("aria-selected", String(name === tab));
-  }
-  // Keep a deeper vault URL (view or edit) when the page was opened on one.
-  if (!(tab === "vaults" && parseVaultPath(location.pathname))) {
-    try { history.replaceState(null, "", paths[tab]); } catch { /* not critical */ }
-  }
-  banner("");
-  if (!autoload) return;
-  if (tab === "status") loadStatus(false);
-  else if (tab === "admin") loadConfig();
-  else if (tab === "users") loadUsers();
-  else renderVaultRoute();
+function setHead({ crumbs, title, lede }) {
+  const nav = $("crumbs");
+  nav.replaceChildren();
+  (crumbs || []).forEach(([text, href], i) => {
+    if (i) nav.append(h("span", { class: "sep", "aria-hidden": "true" }, "›"));
+    nav.append(href ? h("a", { href }, text) : h("span", { "aria-current": "page" }, text));
+  });
+  nav.hidden = !(crumbs && crumbs.length);
+  $("page-title").textContent = title;
+  $("page-lede").textContent = lede || "";
+  $("page-lede").hidden = !lede;
+  document.title = `${title} · Sentinel console`;
 }
 
-// Leaving the editor (another tab, browser Back) asks first when there are unsaved changes.
+function pageDirty() {
+  return editorDirty() || configDirty();
+}
+
+// Leaving a form with unsaved changes asks first.
 function confirmLeave() {
-  if (!editorDirty()) return true;
-  if (!confirm("You have unsaved changes to this vault. Discard them?")) return false;
+  if (!pageDirty()) return true;
+  if (!confirm("You have unsaved changes. Discard them?")) return false;
   vaultState.loaded = false;
+  currentConfig = [];
   return true;
 }
 
-window.addEventListener("popstate", () => {
-  if (!confirmLeave()) {
-    // The URL already changed; put the editor's URL back so Back does not silently discard.
-    history.pushState(null, "", vaultUrl(vaultState.id, "/edit"));
-    return;
-  }
-  show(tabForPath(location.pathname));
-});
+let renderToken = 0;
+let renderedUrl = null;
 
-function openTab(tab) {
-  if (!confirmLeave()) return;
-  if (tab === "vaults") { try { history.replaceState(null, "", "/admin/vaults"); } catch { /* not critical */ } }
-  show(tab);
+async function render(opts = {}) {
+  const route = parseRoute(location.pathname) || { page: "hub" };
+  const mine = ++renderToken;
+  const alive = () => mine === renderToken;
+  renderedUrl = location.pathname + location.search;
+  for (const name of Object.keys(PAGES)) {
+    $(`page-${name}`).hidden = name !== route.page;
+    const nav = $(`nav-${PAGES[name].nav}`);
+    if (name === route.page) nav.setAttribute("aria-current", "page");
+    else nav.removeAttribute("aria-current");
+  }
+  banner("");
+  if (route.page !== "vaults") {
+    const p = PAGES[route.page];
+    setHead({ crumbs: route.page === "hub" ? [] : [["Console", "/admin"], [p.title]], title: p.title, lede: p.lede });
+  }
+  if (route.page === "hub") await loadHub(alive);
+  else if (route.page === "status") await loadStatus(Boolean(opts.live), alive);
+  else if (route.page === "config") await loadConfig(alive);
+  else if (route.page === "users") await loadUsers(alive);
+  else await loadVaults(route, alive);
 }
 
-$("tab-status").addEventListener("click", () => openTab("status"));
-$("tab-admin").addEventListener("click", () => openTab("admin"));
-$("tab-users").addEventListener("click", () => openTab("users"));
-$("tab-vaults").addEventListener("click", () => openTab("vaults"));
-$("edit-validate").addEventListener("click", () => validateVault());
-$("edit-save").addEventListener("click", () => saveVault());
-$("edit-cancel").addEventListener("click", () => navigate(vaultUrl(vaultState.id)));
+function navigate(path, opts = {}) {
+  if (!confirmLeave()) return false;
+  if (path === location.pathname + location.search) history.replaceState(null, "", path);
+  else history.pushState(null, "", path);
+  document.documentElement.scrollTop = 0;
+  render(opts).then(() => { if (!opts.keepFocus) $("page-title").focus({ preventScroll: true }); });
+  return true;
+}
+
+// Links between console pages navigate without a reload, so the in-memory sign-in survives.
+document.addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target.closest("a[href]");
+  if (!a || a.target || a.hasAttribute("download")) return;
+  const url = new URL(a.href, location.href);
+  if (url.origin !== location.origin || !parseRoute(url.pathname)) return;
+  e.preventDefault();
+  navigate(url.pathname + url.search);
+});
+
+window.addEventListener("popstate", () => {
+  if (!confirmLeave()) {
+    history.pushState(null, "", renderedUrl); // Back would silently discard the edits
+    return;
+  }
+  render();
+});
+
+window.addEventListener("beforeunload", (e) => { if (pageDirty()) { e.preventDefault(); e.returnValue = ""; } });
+
+$("hub-signin").addEventListener("click", () => render());
 $("refresh").addEventListener("click", () => loadStatus(false));
 $("live").addEventListener("click", () => loadStatus(true));
 $("save").addEventListener("click", () => saveConfig());
-// Switch tabs WITHOUT the automatic static load, so it cannot race the live run and overwrite it.
-$("verify").addEventListener("click", () => { show("status", false); loadStatus(true); });
+$("verify").addEventListener("click", async () => {
+  if (await saveConfig()) navigate("/status", { live: true });
+});
+$("user-add").addEventListener("click", () => editUser("add"));
+$("edit-validate").addEventListener("click", () => validateVault());
+$("edit-save").addEventListener("click", () => saveVault());
+$("edit-cancel").addEventListener("click", () => navigate(vaultUrl(vaultState.id)));
 $("signout").addEventListener("click", () => { auth.user = auth.pass = null; location.reload(); });
 
-show(tabForPath(location.pathname));
+render();
   </script>
 </body>
 </html>

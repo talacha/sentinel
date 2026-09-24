@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -127,7 +128,7 @@ def test_admin_401_never_triggers_the_browsers_native_prompt(tmp_path):
 
 def test_console_pages_are_data_free_shells_even_behind_a_visitor_login(tmp_path):
     client, _ = make(tmp_path, ui=True, access_password=VISITOR[1])
-    for path in ("/status", "/admin"):
+    for path in ("/status", "/admin", "/admin/config", "/admin/users", "/admin/vaults"):
         page = client.get(path)
         assert page.status_code == 200 and "text/html" in page.headers["content-type"]
         assert page.headers["cache-control"] == "no-store"
@@ -504,3 +505,26 @@ def test_the_admin_lockout_never_affects_visitors(tmp_path):
     assert client.get("/v1/admin/config", auth=ADMIN).status_code == 429
     assert client.get("/v1/vaults", auth=VISITOR).status_code == 200
     assert client.get("/healthz").status_code == 200
+
+
+# --------------------------------------------------------------------------- the console shell
+
+CONSOLE = (ROOT / "ui" / "console.html").read_text()
+
+
+def test_the_console_keeps_hidden_elements_hidden():
+    # Author `display:` rules (grid, flex, ...) beat the browser's own [hidden] rule, so without
+    # this one a "hidden" label, button, or save bar is still shown. jsdom cannot catch that;
+    # it was found in a real browser.
+    assert "[hidden] { display:none !important; }" in CONSOLE
+    assert "display:flex !important" not in CONSOLE  # would out-rank the rule above
+
+
+def test_every_console_link_leads_to_a_served_page(tmp_path):
+    client, _ = make(tmp_path, ui=True)
+    nav = re.findall(r'<a id="nav-\w+" href="([^"]+)"', CONSOLE)
+    tiles = re.findall(r'<a class="tile" href="([^"]+)"', CONSOLE)
+    assert nav == ["/admin", "/status", "/admin/config", "/admin/users", "/admin/vaults"]
+    assert tiles == nav[1:]  # the overview lists every option except itself
+    for path in nav:
+        assert client.get(path).status_code == 200
