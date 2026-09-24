@@ -6,7 +6,6 @@ import base64
 import binascii
 import logging
 import math
-import secrets
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +16,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 from . import __version__, preflight
@@ -27,6 +27,7 @@ from .ingest import IngestError, ingest_bytes
 from .limits import FailureThrottle, HourlyLimiter
 from .models import ReviewReport
 from .runtime import BY_NAME, ENGINE_FIELDS, SECRETS, OverrideError, RuntimeConfig
+from .users import MIN_PASSWORD_LENGTH, PasswordPolicyError, UserStore, generate_password
 from .vault import VaultError, VaultRegistry
 
 log = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ DEFAULT_UI_DIR = _ROOT / "ui"
 DEFAULT_CLIENT_DIR = _ROOT / "client"
 
 # Pages that are only a shell: they contain no data and log in with an explicit header.
-_PUBLIC_SHELLS = {"/status", "/admin"}
+_PUBLIC_SHELLS = {"/status", "/admin", "/admin/user"}
 
 
 def _basic_credentials(request: Request) -> tuple[str, str] | None:
@@ -51,34 +52,16 @@ def _basic_credentials(request: Request) -> tuple[str, str] | None:
     return (user, password) if sep else None
 
 
-def _matches(request: Request, user: str, password: str | None) -> bool:
-    if not password:
-        return False
-    creds = _basic_credentials(request)
-    if creds is None:
-        return False
-    # Compare both fields in constant time and always evaluate both.
-    user_ok = secrets.compare_digest(creds[0].encode(), user.encode())
-    pass_ok = secrets.compare_digest(creds[1].encode(), password.encode())
-    return user_ok and pass_ok
-
-
-def is_admin(request: Request, settings: Settings) -> bool:
-    return _matches(request, settings.admin_user, settings.admin_password)
-
-
-def is_authorized(request: Request, settings: Settings) -> bool:
-    """True when the visitor login is off, or the request carries visitor or admin credentials."""
-    if not settings.access_password:
-        return True
-    return _matches(request, settings.access_user, settings.access_password) or is_admin(
-        request, settings
-    )
-
-
 class ConfigUpdate(BaseModel):
     set: dict[str, Any] = Field(default_factory=dict)
     clear: list[str] = Field(default_factory=list)
+
+
+class PasswordReset(BaseModel):
+    """Exactly one of `password` (chosen by the admin) or `generate` (a random one)."""
+
+    password: str | None = None
+    generate: bool = False
 
 
 def create_app(
@@ -91,6 +74,7 @@ def create_app(
     overrides_path: Path | None = None,
     preflight_deps: dict[str, Any] | None = None,
     admin_throttle: FailureThrottle | None = None,
+    users_path: Path | None = None,
 ) -> FastAPI:
     """Build the app. The engine is created lazily so the app can start (and report what is
     misconfigured on /healthz) before an inference endpoint is set.
@@ -105,6 +89,15 @@ def create_app(
     audit = AuditLog(base.audit_log_path)
     limiter = limiter or HourlyLimiter(runtime.settings.max_reviews_per_hour)
     admin_throttle = admin_throttle or FailureThrottle()
+    # The environment defines the first two users (admin, then the visitor login); they follow it
+    # until an admin resets their password in the console.
+    users = UserStore(users_path or base.audit_log_path.parent / "users.json")
+    users.sync_env(
+        admin_user=base.admin_user,
+        admin_password=base.admin_password,
+        visitor_user=base.access_user,
+        visitor_password=base.access_password,
+    )
 
     def cfg() -> Settings:
         return runtime.settings
@@ -128,15 +121,16 @@ def create_app(
     @app.middleware("http")
     async def require_login(request: Request, call_next):
         path = request.url.path
-        settings_now = cfg()
         if request.method == "OPTIONS" or path == "/healthz" or path in _PUBLIC_SHELLS:
             return await call_next(request)
-        if path.startswith("/v1/admin"):
-            if not settings_now.admin_password:
+        admin_scope = path.startswith("/v1/admin")
+        if admin_scope:
+            if not cfg().admin_password:
                 return JSONResponse(
                     {"detail": "The admin console is disabled. Set ADMIN_PASSWORD to enable it."},
                     status_code=403,
                 )
+            # Checked before any password hashing, so guessing cannot be used to burn CPU.
             wait = admin_throttle.blocked_for()
             if wait is not None:
                 return JSONResponse(
@@ -144,13 +138,18 @@ def create_app(
                     status_code=429,
                     headers={"Retry-After": str(math.ceil(wait))},
                 )
-            if is_admin(request, settings_now):
+        creds = _basic_credentials(request)
+        # Password hashing is CPU-heavy on purpose: keep it off the event loop.
+        user = await run_in_threadpool(users.authenticate, *creds) if creds else None
+        request.state.user = user
+        if admin_scope:
+            if user is not None and user.role == "admin":
                 admin_throttle.reset()
                 return await call_next(request)
             if request.headers.get("authorization"):  # a wrong guess, not just a missing login
                 admin_throttle.record_failure()
             return JSONResponse({"detail": "admin authentication required"}, status_code=401)
-        if is_authorized(request, settings_now):
+        if user is not None or not users.login_required():
             return await call_next(request)
         headers = {}
         # Only navigations get the browser's native login prompt; API calls from a page do not,
@@ -174,12 +173,15 @@ def create_app(
     @app.get("/healthz")
     def healthz(request: Request) -> dict:
         s = cfg()
+        login_required = users.login_required()
         public = {
             "status": "ok",
-            "auth_required": bool(s.access_password),
+            "auth_required": login_required,
             "max_upload_mb": s.max_upload_mb,
         }
-        if not is_authorized(request, s):
+        creds = _basic_credentials(request)
+        user = users.authenticate(*creds) if creds else None
+        if login_required and user is None:
             return public
         try:
             vaults = len(get_registry())
@@ -272,6 +274,17 @@ def create_app(
             include_env_file=False,
             **(preflight_deps or {}),
         )
+        listed = users.list()
+        admins = sum(1 for u in listed if u["role"] == "admin")
+        if users.load_error:
+            report.add("users", "warn", users.load_error)
+        else:
+            report.add(
+                "users",
+                "pass",
+                f"{len(listed)} user(s): {admins} admin, {len(listed) - admins} visitor; "
+                f"visitor login {'required' if users.login_required() else 'OFF'}",
+            )
         if runtime.load_error:
             report.add("admin overrides", "warn", runtime.load_error)
         elif runtime.overrides:
@@ -343,6 +356,37 @@ def create_app(
             log.exception("could not write the config_change audit event")
         return {"changed": changed, "fields": runtime.describe()}
 
+    @app.get("/v1/admin/users")
+    def admin_users() -> dict:
+        """The authorized users: the environment-defined admin and visitor first. Never hashes."""
+        return {"users": users.list(), "min_password_length": MIN_PASSWORD_LENGTH}
+
+    @app.post("/v1/admin/users/{username}/password", dependencies=[Depends(admin_write)])
+    def admin_reset_password(username: str, body: PasswordReset, request: Request) -> JSONResponse:
+        """Reset a user's password: choose one, or generate a random one (returned once)."""
+        if users.get(username) is None:
+            raise HTTPException(404, "unknown user")
+        if body.generate == (body.password is not None):
+            raise HTTPException(422, {"errors": {"password": "provide a password or generate"}})
+        password = generate_password() if body.generate else str(body.password)
+        try:
+            users.reset_password(username, password)
+        except PasswordPolicyError as exc:
+            raise HTTPException(422, {"errors": {"password": str(exc)}}) from exc
+        try:
+            audit.event(
+                "user_password_reset",
+                admin=request.state.user.username,
+                username=username,
+                generated=body.generate,
+            )
+        except OSError:
+            log.exception("could not write the user_password_reset audit event")
+        payload: dict[str, Any] = {"username": username, "generated": body.generate}
+        if body.generate:
+            payload["password"] = password  # shown once, never stored in the clear
+        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+
     # ------------------------------------------------------------------ pages
     if ui_dir is not None and ui_dir.is_dir():
         app.mount("/static", StaticFiles(directory=ui_dir), name="static")
@@ -356,6 +400,7 @@ def create_app(
 
         app.add_api_route("/status", console, include_in_schema=False)
         app.add_api_route("/admin", console, include_in_schema=False)
+        app.add_api_route("/admin/user", console, include_in_schema=False)
 
     if client_dir is not None and client_dir.is_dir():
         app.mount("/app", StaticFiles(directory=client_dir, html=True), name="client")

@@ -39,6 +39,7 @@ packages = ["src/sentinel"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["real_scrypt: use the production password-hashing cost (slow)"]
 
 [tool.ruff]
 line-length = 100

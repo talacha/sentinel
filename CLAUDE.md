@@ -41,6 +41,11 @@ docker compose up --build        # app only; the model runs on your dedicated GP
   validated atomically, persisted 0600 (`runtime.py`), audited by field name, and require the
   `X-Sentinel-Admin` header. File paths, CORS origins, and admin credentials are not editable.
 - Model ids must match the endpoint's catalog exactly: use `sentinel preflight` to check.
+- **Passwords are stored only as salted scrypt hashes** (`users.py`, `users.json`, 0600); never
+  log, return, or persist a plaintext password. A generated password is returned exactly once.
+  Environment-defined users (`ADMIN_*`, `ACCESS_*`) follow the environment until reset in the
+  console. Do not add a way to disable or delete the last visitor: that silently turns login off.
+  Password hashing must stay off the event loop and behind the admin failure throttle.
 
 ## Gotchas
 

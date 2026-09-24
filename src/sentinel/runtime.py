@@ -104,14 +104,7 @@ FIELDS: tuple[FieldSpec, ...] = (
         "Limits",
         "Global cap across all visitors; 0 = unlimited.",
     ),
-    FieldSpec("access_user", "Visitor username", "Access", "Login for the review pages and API."),
-    FieldSpec(
-        "access_password",
-        "Visitor password",
-        "Access",
-        "Write-only. Empty turns the visitor login off.",
-        secret=True,
-    ),
+    # Logins (usernames and passwords) are managed on the Users page, not here.
     # Shown for information; changing them needs a restart.
     FieldSpec("vaults_dir", "Vaults directory", "Environment", "Environment only.", editable=False),
     FieldSpec(

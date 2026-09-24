@@ -57,6 +57,22 @@
     dialog::backdrop { background:rgb(0 0 0 / .5); }
     dialog h2 { margin:0 0 4px; font-size:1.1rem; }
     dialog label { display:grid; gap:4px; margin:12px 0; font-size:.9rem; font-weight:600; }
+    table.users { width:100%; border-collapse:collapse; font-size:.95rem; }
+    table.users th, table.users td { text-align:left; padding:10px 8px; border-top:1px solid var(--border); vertical-align:middle; }
+    table.users thead th { border-top:0; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+    table.users tbody th { font-weight:650; overflow-wrap:anywhere; }
+    .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    .role { display:inline-block; padding:1px 8px; border-radius:999px; font-size:.75rem; font-weight:700; background:var(--skip-bg); color:var(--skip); }
+    .role.admin { background:var(--warn-bg); color:var(--warn); }
+    .choice-row { display:flex !important; grid-template-columns:none; gap:8px; align-items:center; font-weight:500 !important; margin:8px 0 !important; }
+    dialog .err { color:var(--fail); font-weight:600; margin:8px 0; }
+    code.secret { display:block; padding:12px; font-size:1.05rem; word-break:break-all; user-select:all; }
+    @media (max-width:560px) {
+      table.users thead { display:none; }
+      table.users, table.users tbody, table.users tr, table.users th, table.users td { display:block; }
+      table.users tr { border-top:1px solid var(--border); padding:8px 0; }
+      table.users th, table.users td { border:0; padding:2px 0; }
+    }
     @media (max-width:560px) { .row { grid-template-columns: 60px 1fr; } .row .detail { grid-column: 1 / -1; } }
   </style>
 </head>
@@ -67,6 +83,7 @@
       <nav role="tablist" aria-label="Console sections">
         <button class="tab" role="tab" id="tab-status" aria-selected="true" aria-controls="panel-status">Status</button>
         <button class="tab" role="tab" id="tab-admin" aria-selected="false" aria-controls="panel-admin">Configuration</button>
+        <button class="tab" role="tab" id="tab-users" aria-selected="false" aria-controls="panel-users">Users</button>
         <button id="signout" class="link" hidden>Sign out</button>
       </nav>
     </div>
@@ -98,7 +115,42 @@
         <button id="verify" type="button">Verify with live checks</button>
       </div>
     </section>
+
+    <section id="panel-users" role="tabpanel" aria-labelledby="tab-users" hidden>
+      <p class="muted">The people who can sign in. The admin and visitor logins defined by the server's environment come first. Once you reset a password here, the password set on this page is used from then on, and the environment value is ignored for that user. Passwords are stored only as hashes and can never be shown again.</p>
+      <div class="card">
+        <table class="users" aria-describedby="panel-users">
+          <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Password</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
+          <tbody id="users-body"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
+
+  <dialog id="reset" aria-labelledby="reset-title">
+    <form id="reset-form" method="dialog">
+      <h2 id="reset-title">Reset password</h2>
+      <p class="err" id="reset-error" role="alert" hidden></p>
+      <label class="choice-row"><input type="radio" name="how" value="generate" checked> Generate a strong random password</label>
+      <label class="choice-row"><input type="radio" name="how" value="choose"> Choose a password</label>
+      <label id="reset-choose" hidden>New password <input id="reset-pass" type="password" autocomplete="new-password"></label>
+      <p class="muted" id="reset-rule"></p>
+      <div class="actions">
+        <button type="submit" class="primary">Reset password</button>
+        <button type="button" id="reset-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="result" aria-labelledby="result-title">
+    <h2 id="result-title">New password</h2>
+    <p class="muted">For <strong id="result-user"></strong>. <strong>This is the only time it is shown.</strong> Copy it now and give it to the person; it cannot be recovered, only reset again.</p>
+    <p><code id="result-pass" class="secret"></code></p>
+    <div class="actions">
+      <button type="button" id="result-copy" class="primary">Copy</button>
+      <button type="button" id="result-done">Done</button>
+    </div>
+  </dialog>
 
   <dialog id="login" aria-labelledby="login-title">
     <form id="login-form" method="dialog">
@@ -362,20 +414,161 @@ async function saveConfig(changes) {
 
 // ------------------------------------------------------------------------------ tabs and start
 
+// ------------------------------------------------------------------------------ users
+
+let minPasswordLength = 12;
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+}
+
+function renderUsers(users) {
+  const body = $("users-body");
+  body.replaceChildren();
+  for (const u of users) {
+    const button = h("button", { type: "button" }, "Reset password");
+    button.addEventListener("click", () => resetPassword(u.username));
+    body.append(h("tr", {},
+      h("th", { scope: "row" }, u.username, u.username === auth.user ? " (you)" : ""),
+      h("td", {}, h("span", { class: `role ${u.role}` }, u.role)),
+      h("td", { class: "detail" },
+        u.source === "environment" ? "From the server's environment" : "Set in this console",
+        h("br"), `changed ${fmtDate(u.password_changed_at)}`),
+      h("td", {}, button)));
+  }
+}
+
+async function loadUsers() {
+  banner("");
+  try {
+    const resp = await api("/v1/admin/users");
+    if (!resp.ok) throw new Stop(`Could not load the users (HTTP ${resp.status}).`);
+    const data = await resp.json();
+    minPasswordLength = data.min_password_length || minPasswordLength;
+    renderUsers(data.users);
+  } catch (err) {
+    if (err instanceof Stop) banner(err.message);
+    else throw err;
+  }
+}
+
+// Ask how to reset: a generated password, or one the admin chooses. Resolves to null on cancel.
+function askReset(username, message) {
+  return new Promise((resolve) => {
+    const dialog = $("reset");
+    $("reset-title").textContent = `Reset password for ${username}`;
+    $("reset-rule").textContent = `A chosen password needs at least ${minPasswordLength} characters and must not be easy to guess.`;
+    const error = $("reset-error");
+    error.textContent = message || "";
+    error.hidden = !message;
+    dialog.querySelector('input[value="generate"]').checked = true;
+    $("reset-choose").hidden = true;
+    $("reset-pass").value = "";
+    const sync = () => { $("reset-choose").hidden = dialog.querySelector('input[name="how"]:checked').value !== "choose"; };
+    const radios = [...dialog.querySelectorAll('input[name="how"]')];
+    const done = (value) => {
+      radios.forEach((r) => r.removeEventListener("change", sync));
+      dialog.removeEventListener("cancel", onCancel);
+      $("reset-form").removeEventListener("submit", onSubmit);
+      $("reset-cancel").removeEventListener("click", onCancelClick);
+      $("reset-pass").value = "";
+      if (dialog.open) dialog.close();
+      resolve(value);
+    };
+    const onSubmit = (e) => {
+      e.preventDefault();
+      const choose = dialog.querySelector('input[name="how"]:checked').value === "choose";
+      done(choose ? { generate: false, password: $("reset-pass").value } : { generate: true });
+    };
+    const onCancel = (e) => { e.preventDefault(); done(null); };
+    const onCancelClick = () => done(null);
+    radios.forEach((r) => r.addEventListener("change", sync));
+    dialog.addEventListener("cancel", onCancel);
+    $("reset-form").addEventListener("submit", onSubmit);
+    $("reset-cancel").addEventListener("click", onCancelClick);
+    dialog.showModal();
+  });
+}
+
+// Show a generated password exactly once, then wipe it from the page.
+function showNewPassword(username, password) {
+  return new Promise((resolve) => {
+    const dialog = $("result");
+    $("result-user").textContent = username;
+    $("result-pass").textContent = password;
+    const done = () => {
+      $("result-copy").removeEventListener("click", onCopy);
+      $("result-done").removeEventListener("click", done);
+      dialog.removeEventListener("cancel", onEsc);
+      $("result-pass").textContent = "";
+      if (dialog.open) dialog.close();
+      resolve();
+    };
+    const onCopy = async () => {
+      try {
+        await navigator.clipboard.writeText(password);
+        $("result-copy").textContent = "Copied";
+      } catch {
+        $("result-copy").textContent = "Copy failed: select it manually";
+      }
+    };
+    const onEsc = (e) => { e.preventDefault(); done(); };
+    $("result-copy").textContent = "Copy";
+    $("result-copy").addEventListener("click", onCopy);
+    $("result-done").addEventListener("click", done);
+    dialog.addEventListener("cancel", onEsc);
+    dialog.showModal();
+  });
+}
+
+async function resetPassword(username) {
+  banner(""); // do not leave a previous "was reset" message on screen while a new reset is under way
+  let message = "";
+  for (;;) {
+    const choice = await askReset(username, message);
+    if (!choice) return;
+    try {
+      const resp = await api(`/v1/admin/users/${encodeURIComponent(username)}/password`, {
+        method: "POST",
+        json: choice.generate ? { generate: true } : { password: choice.password },
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.status === 422 && data.detail?.errors) {
+        message = `That password was not accepted: ${data.detail.errors.password}. Nothing was changed.`;
+        continue; // ask again, with the reason shown
+      }
+      if (!resp.ok) throw new Stop(`Reset failed (HTTP ${resp.status}).`);
+      // Resetting your own password ends your current sign-in: keep this page signed in.
+      if (username === auth.user) auth.pass = choice.generate ? data.password : choice.password;
+      if (data.password) await showNewPassword(username, data.password);
+      await loadUsers(); // reloading clears the banner, so show the message afterwards
+      banner(`The password for ${username} was reset. The old one no longer works.`, "ok");
+      return;
+    } catch (err) {
+      if (err instanceof Stop) { banner(err.message); return; }
+      throw err;
+    }
+  }
+}
+
 function show(tab, autoload = true) {
-  const status = tab === "status";
-  $("panel-status").hidden = !status;
-  $("panel-admin").hidden = status;
-  $("tab-status").setAttribute("aria-selected", String(status));
-  $("tab-admin").setAttribute("aria-selected", String(!status));
-  try { history.replaceState(null, "", status ? "/status" : "/admin"); } catch { /* not critical */ }
+  const paths = { status: "/status", admin: "/admin", users: "/admin/user" };
+  for (const name of Object.keys(paths)) {
+    $(`panel-${name}`).hidden = name !== tab;
+    $(`tab-${name}`).setAttribute("aria-selected", String(name === tab));
+  }
+  try { history.replaceState(null, "", paths[tab]); } catch { /* not critical */ }
   banner("");
   if (!autoload) return;
-  if (status) loadStatus(false); else loadConfig();
+  if (tab === "status") loadStatus(false);
+  else if (tab === "admin") loadConfig();
+  else loadUsers();
 }
 
 $("tab-status").addEventListener("click", () => show("status"));
 $("tab-admin").addEventListener("click", () => show("admin"));
+$("tab-users").addEventListener("click", () => show("users"));
 $("refresh").addEventListener("click", () => loadStatus(false));
 $("live").addEventListener("click", () => loadStatus(true));
 $("save").addEventListener("click", () => saveConfig());
@@ -383,7 +576,8 @@ $("save").addEventListener("click", () => saveConfig());
 $("verify").addEventListener("click", () => { show("status", false); loadStatus(true); });
 $("signout").addEventListener("click", () => { auth.user = auth.pass = null; location.reload(); });
 
-show(location.pathname.replace(/\/+$/, "") === "/admin" ? "admin" : "status");
+const startPath = location.pathname.replace(/\/+$/, "");
+show(startPath === "/admin/user" ? "users" : startPath === "/admin" ? "admin" : "status");
   </script>
 </body>
 </html>
