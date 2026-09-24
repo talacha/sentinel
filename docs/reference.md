@@ -17,7 +17,7 @@ Set in the environment or in `.env` (copy `.env.example`). Run commands from the
 | `LLM_TIMEOUT_SECONDS` | `120` | Per-request timeout. |
 | `TAVILY_API_KEY` | unset | Enables scoped verification. Without it, rules that need a public source resolve to `revisar`. |
 | `MAX_SEARCHES_PER_REVIEW` | `5` | Hard cap on outbound searches per review. |
-| `VAULTS_DIR` | `vaults` | Where the shipped vaults are read. They are never modified; edits made in the console are saved as versions in `vaults.d/` next to the audit log (see Vaults, below). |
+| `VAULTS_DIR` | `vaults` | Where the shipped vaults are read. They are never modified; edits made in the console, and vaults added there, are saved as versioned files in `vaults.d/` next to the audit log (see Vaults, below). |
 | `AUDIT_LOG_PATH` | `audit/audit.jsonl` | Where the audit log is appended. |
 | `MAX_UPLOAD_MB`, `MAX_DOCUMENT_CHARS` | `20`, `300000` | Upload size and extracted-text limits. |
 | `MAX_WORKERS` | `4` | Rules reviewed concurrently. |
@@ -56,7 +56,7 @@ cap, and a domain. It never prints secrets.
 | `GET /healthz` | Status, LLM host and model, whether search is configured. Never returns secrets. |
 | `GET /` | The built-in web UI, where people upload documents. |
 | `GET /app/` | The client-facing app (see [`client/`](../client/README.md)). |
-| `GET /admin`, `/status`, `/admin/config`, `/admin/users`, `/admin/vaults[/<id>[/edit]]` | The admin console: one shell, five pages (overview, status, configuration, users, vaults). Contains no data; see below. |
+| `GET /admin`, `/status`, `/admin/config`, `/admin/users`, `/admin/vaults[/new|/<id>[/edit]]` | The admin console: one shell, five pages (overview, status, configuration, users, vaults). Contains no data; see below. |
 | `/v1/admin/*` | The console's API. Admin login required; see below. |
 
 ```bash
@@ -166,8 +166,8 @@ The API behind the page (admin-only; writes need JSON and the `X-Sentinel-Admin`
 
 Lists every vault with its rule count, current version, and last change. `/admin/vaults/<id>`
 shows the **current version**: its rules, the YAML, and the version history (any earlier version can
-be opened and read). Admins can edit at `/admin/vaults/<id>/edit`; see
-[Editing vaults](#editing-vaults).
+be opened and read). Admins can edit at `/admin/vaults/<id>/edit` and add a vault at
+`/admin/vaults/new`; see [Editing vaults](#editing-vaults) and [Adding a vault](#adding-a-vault).
 
 Security model:
 
@@ -286,7 +286,39 @@ The console's API, all admin-only (writes need JSON and the `X-Sentinel-Admin` h
 
 | Endpoint | Description |
 | --- | --- |
-| `GET /v1/admin/vaults` | Every vault: version, source (`shipped` or `edited`), last change, rule count. |
+| `GET /v1/admin/vaults` | Every vault: version, source (`shipped`, `edited`, or `created`), last change, rule count. |
 | `GET /v1/admin/vaults/<id>[?version=N]` | The YAML, rules, and version history. |
 | `POST /v1/admin/vaults/<id>/validate` | `{"yaml": "..."}`. `200` if valid, else `422` with `errors[]`. Saves nothing. |
 | `PUT /v1/admin/vaults/<id>` | `{"yaml", "base_version", "note"}`. `200` with `saved_version`; `409` if `base_version` is stale; `413` too large; `422` invalid. |
+| `GET /v1/admin/vaults/new` | The starter YAML the new-vault form begins with. |
+| `POST /v1/admin/vaults/new/validate` | `{"yaml": "..."}`. Everything creating would check (including that the id is free), saving nothing. `200`, `409` id taken, `422` invalid. |
+| `POST /v1/admin/vaults` | `{"yaml", "note"}`. `201` with the new vault (`created_version: 1`); `409` id taken; `413` too large; `422` invalid; `501` no writable state directory. |
+
+### Adding a vault
+
+An admin adds a vault at `/admin/vaults/new` (the **New vault** button on `/admin/vaults`): the same
+YAML editor, started from an example with one criterion rule and one check rule. **Validate** checks
+it without saving, and **Create vault** saves it.
+
+- **Saved as files, used everywhere at once.** A new vault is written to `vaults.d/<id>/v1.yaml`
+  (with an `index.json`) next to the audit log, with owner-only permissions, exactly as you typed
+  it, comments included. It never touches the shipped `vaults/` directory, so that can stay mounted
+  read-only. Because the review endpoint, `GET /v1/vaults` (which the built-in UI and the client app
+  list), and the CLI all read vaults through the same registry, it is available for reviews the
+  moment it is created, without a restart, and it survives one.
+- **Same validation as a shipped file,** so a vault that would fail to load is refused whole. Errors
+  show the line for YAML syntax problems and the field for rule problems.
+- **The id is chosen once and cannot be changed.** It comes from the `id:` line and becomes a
+  directory name, so a new vault's id is stricter than a shipped one's: lowercase letters, digits,
+  `-` and `_`, 1 to 64 characters, starting with a letter or digit. `new` is reserved (it is the
+  address of this page). The id must not match any existing vault, shipped or added; the form says
+  so and nothing is written. There can be at most 100 vaults.
+- **Nothing on disk is ever overwritten.** If files for that id are somehow already there but
+  cannot be loaded, creation is refused and they are left alone; a write that fails partway removes
+  what it wrote.
+- **Then it behaves like any vault.** It starts at version 1 (there is no shipped file), each later
+  edit saves the next version, and every version stays viewable. It is labelled "added here" in the
+  console. If a shipped vault later takes the same id, the shipped one wins and the status page
+  says so.
+- **Audited by hash.** A `vault_created` event records who, the id, the SHA-256 of the text and the
+  note; the vault text is not copied into the log.
