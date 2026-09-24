@@ -9,11 +9,11 @@ import math
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-from urllib.parse import urlparse
+from typing import Any, Literal
+from urllib.parse import quote, urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -27,7 +27,13 @@ from .ingest import IngestError, ingest_bytes
 from .limits import FailureThrottle, HourlyLimiter
 from .models import ReviewReport
 from .runtime import BY_NAME, ENGINE_FIELDS, SECRETS, OverrideError, RuntimeConfig
-from .users import MIN_PASSWORD_LENGTH, PasswordPolicyError, UserStore, generate_password
+from .users import (
+    MIN_PASSWORD_LENGTH,
+    PasswordPolicyError,
+    UserError,
+    UserStore,
+    generate_password,
+)
 from .vault import (
     MAX_VAULT_BYTES,
     VaultConflict,
@@ -44,11 +50,18 @@ DEFAULT_UI_DIR = _ROOT / "ui"
 DEFAULT_CLIENT_DIR = _ROOT / "client"
 
 # Pages that are only a shell: they contain no data and log in with an explicit header.
-_PUBLIC_SHELLS = {"/status", "/admin", "/admin/user", "/admin/vaults"}
+_PUBLIC_SHELLS = {"/status", "/admin", "/admin/config", "/admin/users", "/admin/vaults"}
+# Earlier URLs, kept as redirects so bookmarks and links keep working.
+_LEGACY_SHELLS = {"/admin/user", "/admin/vault"}
 
 
 def _is_shell(path: str) -> bool:
-    return path in _PUBLIC_SHELLS or path.startswith("/admin/vaults/")
+    path = path.rstrip("/") or "/"
+    return (
+        path in _PUBLIC_SHELLS
+        or path in _LEGACY_SHELLS
+        or path.startswith(("/admin/vaults/", "/admin/vault/"))
+    )
 
 
 def _basic_credentials(request: Request) -> tuple[str, str] | None:
@@ -78,6 +91,23 @@ class VaultSave(BaseModel):
 
 class VaultValidate(BaseModel):
     yaml: str
+
+
+class UserCreate(BaseModel):
+    """A new user. Exactly one of `password` (chosen by the admin) or `generate`."""
+
+    username: str
+    role: Literal["admin", "visitor"] = "visitor"
+    password: str | None = None
+    generate: bool = False
+
+
+class UserUpdate(BaseModel):
+    """Change a user's role and/or password (at most one of `password` and `generate`)."""
+
+    role: Literal["admin", "visitor"] | None = None
+    password: str | None = None
+    generate: bool = False
 
 
 class PasswordReset(BaseModel):
@@ -403,6 +433,78 @@ def create_app(
         """The authorized users: the environment-defined admin and visitor first. Never hashes."""
         return {"users": users.list(), "min_password_length": MIN_PASSWORD_LENGTH}
 
+    def user_error(exc: UserError | PasswordPolicyError) -> HTTPException:
+        if isinstance(exc, PasswordPolicyError):
+            return HTTPException(422, {"errors": {"password": str(exc)}})
+        return HTTPException(409 if exc.conflict else 422, {"errors": {exc.field: str(exc)}})
+
+    def user_payload(
+        username: str, generated: str | None, was_generated: bool, status: int = 200
+    ) -> JSONResponse:
+        payload: dict[str, Any] = {
+            "user": users.describe(username),
+            "generated": was_generated,
+        }
+        if generated is not None:
+            payload["password"] = generated  # shown once, never stored in the clear
+        return JSONResponse(payload, status_code=status, headers={"Cache-Control": "no-store"})
+
+    def audit_event(name: str, **fields: Any) -> None:
+        try:
+            audit.event(name, **fields)
+        except OSError:
+            log.exception("could not write the %s audit event", name)
+
+    @app.post("/v1/admin/users", status_code=201, dependencies=[Depends(admin_write)])
+    def admin_create_user(body: UserCreate, request: Request) -> JSONResponse:
+        """Add a user, with a chosen password or a generated one (returned once)."""
+        if body.generate == (body.password is not None):
+            raise HTTPException(422, {"errors": {"password": "provide a password or generate"}})
+        password = generate_password() if body.generate else str(body.password)
+        try:
+            users.create(body.username, body.role, password)
+        except (UserError, PasswordPolicyError) as exc:
+            raise user_error(exc) from exc
+        audit_event(
+            "user_created",
+            admin=request.state.user.username,
+            username=body.username,
+            role=body.role,
+            generated=body.generate,
+        )
+        return user_payload(
+            body.username, password if body.generate else None, body.generate, status=201
+        )
+
+    @app.put("/v1/admin/users/{username}", dependencies=[Depends(admin_write)])
+    def admin_update_user(username: str, body: UserUpdate, request: Request) -> JSONResponse:
+        """Change a user's role and/or password, all or nothing. Nobody can change their own role,
+        and the last admin, the last visitor, and the environment-defined users keep theirs."""
+        if users.get(username) is None:
+            raise HTTPException(404, "unknown user")
+        if body.generate and body.password is not None:
+            raise HTTPException(422, {"errors": {"password": "provide a password or generate"}})
+        password = generate_password() if body.generate else body.password
+        try:
+            change = users.update(
+                username,
+                role=body.role,
+                password=password,
+                actor=request.state.user.username,
+            )
+        except (UserError, PasswordPolicyError) as exc:
+            raise user_error(exc) from exc
+        audit_event(
+            "user_updated",
+            admin=request.state.user.username,
+            username=username,
+            role_from=change.role_from,
+            role_to=change.role_to,
+            password_reset=change.password_changed,
+            generated=body.generate,
+        )
+        return user_payload(username, password if body.generate else None, body.generate)
+
     @app.post("/v1/admin/users/{username}/password", dependencies=[Depends(admin_write)])
     def admin_reset_password(username: str, body: PasswordReset, request: Request) -> JSONResponse:
         """Reset a user's password: choose one, or generate a random one (returned once)."""
@@ -566,12 +668,34 @@ def create_app(
         def console() -> FileResponse:
             return FileResponse(ui_dir / "console.html", headers={"Cache-Control": "no-store"})
 
-        app.add_api_route("/status", console, include_in_schema=False)
-        app.add_api_route("/admin", console, include_in_schema=False)
-        app.add_api_route("/admin/user", console, include_in_schema=False)
-        app.add_api_route("/admin/vaults", console, include_in_schema=False)
-        app.add_api_route("/admin/vaults/{vault_id}", console, include_in_schema=False)
-        app.add_api_route("/admin/vaults/{vault_id}/edit", console, include_in_schema=False)
+        # One shell serves every console page: the overview, status, configuration, users, and
+        # vaults (list, view, edit). The page reads its own URL to decide what to show.
+        for page in (
+            "/status",
+            "/admin",
+            "/admin/config",
+            "/admin/users",
+            "/admin/vaults",
+            "/admin/vaults/{vault_id}",
+            "/admin/vaults/{vault_id}/edit",
+        ):
+            app.add_api_route(page, console, include_in_schema=False)
+
+        def moved(request: Request, target: str) -> RedirectResponse:
+            query = f"?{request.url.query}" if request.url.query else ""
+            return RedirectResponse(target + query, status_code=307)
+
+        @app.get("/admin/user", include_in_schema=False)
+        def legacy_users(request: Request) -> RedirectResponse:
+            return moved(request, "/admin/users")
+
+        @app.get("/admin/vault", include_in_schema=False)
+        def legacy_vaults(request: Request) -> RedirectResponse:
+            return moved(request, "/admin/vaults")
+
+        @app.get("/admin/vault/{rest:path}", include_in_schema=False)
+        def legacy_vault(rest: str, request: Request) -> RedirectResponse:
+            return moved(request, "/admin/vaults/" + quote(rest.lstrip("/"), safe="/"))
 
     if client_dir is not None and client_dir.is_dir():
         app.mount("/app", StaticFiles(directory=client_dir, html=True), name="client")

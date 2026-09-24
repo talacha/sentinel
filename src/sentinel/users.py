@@ -5,6 +5,7 @@ in plaintext, and are never returned by any API. The environment still defines t
 (`ADMIN_USER`/`ADMIN_PASSWORD` and `ACCESS_USER`/`ACCESS_PASSWORD`) so an existing deployment keeps
 working: those entries follow the environment until an admin resets the password in the console,
 after which the console's password wins and the environment value is ignored for that user.
+Admins can also add users and edit a user's role and password in the console.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -32,6 +34,10 @@ MIN_PASSWORD_LENGTH = 12
 MAX_PASSWORD_LENGTH = 128
 WEAK_PASSWORDS = {"password", "demo", "sentinel", "changeme", "admin", "letmein", "123456"}
 
+MAX_USERS = 100
+# No colon (HTTP Basic splits at the first one), no spaces, and a letter or digit first.
+_USERNAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,63}")
+
 _SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
 _CACHE_TTL_SECONDS = 60.0
 _CACHE_MAX = 1024
@@ -39,6 +45,25 @@ _CACHE_MAX = 1024
 
 class PasswordPolicyError(ValueError):
     """A new password was rejected (the message never contains the password)."""
+
+
+class UserError(ValueError):
+    """A user change was refused. `field` is the form field to show the message against;
+    `conflict` marks "already exists" (HTTP 409) as opposed to invalid input (422)."""
+
+    def __init__(self, message: str, field: str = "user", conflict: bool = False):
+        super().__init__(message)
+        self.field = field
+        self.conflict = conflict
+
+
+@dataclass(frozen=True)
+class UserChange:
+    """What an update actually did (for the audit log; never contains a password)."""
+
+    role_from: Role | None = None
+    role_to: Role | None = None
+    password_changed: bool = False
 
 
 # --------------------------------------------------------------------------- hashing
@@ -85,6 +110,14 @@ def validate_password(username: str, password: str) -> None:
         raise PasswordPolicyError("is too easy to guess")
     if password != password.strip():
         raise PasswordPolicyError("must not start or end with whitespace")
+
+
+def validate_username(username: str) -> None:
+    if not isinstance(username, str) or not _USERNAME_RE.fullmatch(username):
+        raise UserError(
+            "use 1 to 64 letters, digits, or . _ @ - (starting with a letter or digit; no spaces)",
+            field="username",
+        )
 
 
 def generate_password() -> str:
@@ -179,6 +212,9 @@ class UserStore:
             return False
         now = _now()
         if existing is None:
+            if name in self._users:  # a console user already has this name: never overwrite it
+                log.warning("environment user %r not created: a console user has that name", name)
+                return False
             self._users[name] = User(name, role, hash_password(password), "env", slot, now, now)
             return True
         changed = False
@@ -229,6 +265,28 @@ class UserStore:
 
     # -- management --------------------------------------------------------------------
 
+    def _role_lock(self, user: User) -> str | None:
+        """Why this user's role cannot be changed, or None. Call with the lock held."""
+        if user.bootstrap is not None:
+            return "Set by the server's environment (ADMIN_USER / ACCESS_USER)."
+        same = sum(1 for u in self._users.values() if u.role == user.role)
+        if same <= 1 and user.role == "admin":
+            return "The only admin: the console would have no one to sign in."
+        if same <= 1 and user.role == "visitor":
+            return "The only visitor: changing it would turn the visitor login off."
+        return None
+
+    def _describe(self, u: User) -> dict[str, Any]:
+        return {
+            "username": u.username,
+            "role": u.role,
+            "source": "environment" if u.source == "env" else "console",
+            "bootstrap": u.bootstrap is not None,
+            "role_locked": self._role_lock(u),
+            "created_at": u.created_at,
+            "password_changed_at": u.password_changed_at,
+        }
+
     def list(self) -> list[dict[str, Any]]:
         """Users for display: the admin and visitor defined by the environment come first."""
         with self._lock:
@@ -237,29 +295,76 @@ class UserStore:
                 self._users.values(),
                 key=lambda u: (order.get(u.bootstrap or "", 2), u.created_at, u.username),
             )
-            return [
-                {
-                    "username": u.username,
-                    "role": u.role,
-                    "source": "environment" if u.source == "env" else "console",
-                    "bootstrap": u.bootstrap is not None,
-                    "created_at": u.created_at,
-                    "password_changed_at": u.password_changed_at,
-                }
-                for u in users
-            ]
+            return [self._describe(u) for u in users]
+
+    def describe(self, username: str) -> dict[str, Any]:
+        with self._lock:
+            return self._describe(self._users[username])
 
     def get(self, username: str) -> User | None:
         with self._lock:
             return self._users.get(username)
 
-    def reset_password(self, username: str, password: str) -> None:
-        """Set a new password (validated). Raises KeyError for an unknown user."""
+    def create(self, username: str, role: str, password: str) -> None:
+        """Add a console user. Raises UserError (bad name or role, duplicate, too many) or
+        PasswordPolicyError; nothing is stored unless everything is valid."""
+        with self._lock:
+            validate_username(username)
+            if role not in ("admin", "visitor"):
+                raise UserError("must be admin or visitor", field="role")
+            if any(u.username.lower() == username.lower() for u in self._users.values()):
+                raise UserError("a user with that name already exists", "username", conflict=True)
+            if len(self._users) >= MAX_USERS:
+                raise UserError(f"at most {MAX_USERS} users", field="username")
+            validate_password(username, password)
+            now = _now()
+            self._users[username] = User(
+                username, role, hash_password(password), "console", None, now, now
+            )
+            self._cache.clear()
+            self._save()
+
+    def update(
+        self,
+        username: str,
+        *,
+        role: str | None = None,
+        password: str | None = None,
+        actor: str | None = None,
+    ) -> UserChange:
+        """Change a user's role and/or password, all or nothing. `actor` is who is asking: nobody
+        can change their own role. Raises KeyError (unknown user), UserError, PasswordPolicyError.
+        """
         with self._lock:
             user = self._users[username]
-            validate_password(username, password)
-            user.hash = hash_password(password)
-            user.source = "console"
-            user.password_changed_at = _now()
-            self._cache.clear()  # the old password must stop working immediately
+            if role is not None and role not in ("admin", "visitor"):
+                raise UserError("must be admin or visitor", field="role")
+            new_role = role if role is not None and role != user.role else None
+            if new_role is not None:
+                if username == actor:
+                    raise UserError("You cannot change your own role.", field="role")
+                reason = self._role_lock(user)
+                if reason:
+                    raise UserError(reason, field="role")
+            if password is not None:
+                validate_password(username, password)
+            if new_role is None and password is None:
+                raise UserError("nothing to change")
+            change = UserChange(
+                role_from=user.role if new_role else None,
+                role_to=new_role,
+                password_changed=password is not None,
+            )
+            if new_role is not None:
+                user.role = new_role
+            if password is not None:
+                user.hash = hash_password(password)
+                user.source = "console"
+                user.password_changed_at = _now()
+            self._cache.clear()  # an old password must stop working immediately
             self._save()
+            return change
+
+    def reset_password(self, username: str, password: str) -> None:
+        """Set a new password (validated). Raises KeyError for an unknown user."""
+        self.update(username, password=password)

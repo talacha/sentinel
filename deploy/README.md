@@ -326,8 +326,8 @@ about "expected evidence not cited" mean the model quoted a different passage, w
   [hackathon runbook](../docs/hackathon.md#going-live-on-the-nebius-stack)). Run
   `sentinel preflight --public` first.
 - **The admin console can redirect your documents.** `/admin` (only enabled by `ADMIN_PASSWORD`,
-  12+ characters, different from `ACCESS_PASSWORD`) can change the model endpoint, and
-  `/admin/vaults` can edit the policy reviews are judged against. Treat it like a root login and
+  12+ characters, different from `ACCESS_PASSWORD`) can change the model endpoint (`/admin/config`), add
+  admins (`/admin/users`), and edit the policy reviews are judged against (`/admin/vaults`). Treat it like a root login and
   check `/status` after any change. Vault edits are stored in the `sentinel-data` volume, so keep
   that volume across redeploys.
 - Keep the model server unreachable from outside: vLLM on `127.0.0.1` (path A), always with an

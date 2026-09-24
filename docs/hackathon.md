@@ -105,7 +105,7 @@ documents, but say so plainly in the video and README rather than calling it sin
    > synthetic), or upload your own synthetic file. Please do not upload real personal data. The
    > service allows `<MAX_REVIEWS_PER_HOUR>` reviews per hour in total.
 
-9. **Afterwards:** rotate the passwords (the Users page at `/admin/user` does it instantly, with no
+9. **Afterwards:** rotate the passwords (the Users page at `/admin/users` does it instantly, with no
    restart), and delete the VM when judging is over. Nebius bills while
    it exists.
 

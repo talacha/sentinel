@@ -37,14 +37,17 @@ docker compose up --build        # app only; the model runs on your dedicated GP
 - **Secrets are write-only.** API keys and passwords never appear in any API response, page,
   status/preflight output, error message, or the audit log (`preflight.redact`, `runtime.describe`).
   Tests assert this; keep them passing when adding fields.
-- The admin console (`/status`, `/admin`, `/admin/user`, `/admin/vaults`, `/v1/admin/*`) needs `ADMIN_PASSWORD`; changes are
+- The admin console (`/admin` and its pages, `/status`, `/v1/admin/*`) needs `ADMIN_PASSWORD`; changes are
   validated atomically, persisted 0600 (`runtime.py`), audited by field name, and require the
   `X-Sentinel-Admin` header. File paths, CORS origins, and admin credentials are not editable.
 - Model ids must match the endpoint's catalog exactly: use `sentinel preflight` to check.
 - **Passwords are stored only as salted scrypt hashes** (`users.py`, `users.json`, 0600); never
   log, return, or persist a plaintext password. A generated password is returned exactly once.
   Environment-defined users (`ADMIN_*`, `ACCESS_*`) follow the environment until reset in the
-  console. Do not add a way to disable or delete the last visitor: that silently turns login off.
+  console. Admins can add users and edit a role/password (all or nothing). Never let an edit
+  lock the console or the visitor login out: nobody changes their own role, and the
+  environment-defined users, the only admin, and the only visitor keep theirs. Do not add a way
+  to disable or delete users without keeping at least one visitor (else login silently turns off).
   Password hashing must stay off the event loop and behind the admin failure throttle.
 - **Vault edits use the same validation as shipped files** (`vault.parse_vault`) and never touch
   them: saves are numbered versions in a writable overlay (`<audit dir>/vaults.d/`, 0600), guarded
@@ -71,3 +74,10 @@ audit, api, cli) · `ui/` static UI · `vaults/` · `samples/` · `tests/` · `e
 `docs/running-locally.md` · `deploy/README.md` (Nebius; commands from vendor docs, not run on Nebius).
 Login is optional and off by default (`ACCESS_PASSWORD`): without it keep the app on localhost/VPN.
 Public deployments use `deploy/public` (Caddy + HTTPS) with a visitor login and a review cap.
+
+## Console UI (`ui/console.html`)
+
+One shell serves every console page; it reads its own URL and switches pages without reloading, so
+the in-memory sign-in survives. Author `display:` rules beat the browser's `[hidden]`, so keep the
+`[hidden] { display:none !important; }` rule and do not add `!important` to `display`. jsdom does not
+implement the CSS cascade: check layout in a real browser, not only in tests.
