@@ -16,6 +16,7 @@ from sentinel.llm import FakeLLM
 from sentinel.vault import (
     VaultConflict,
     VaultError,
+    VaultExists,
     VaultRegistry,
     VaultUnavailable,
     parse_vault,
@@ -506,3 +507,368 @@ def test_an_explicit_vaults_dir_is_used_as_given_without_console_edits(cli_state
 def test_the_overlay_location_is_one_definition_for_service_and_cli(tmp_path):
     settings = Settings(audit_log_path=tmp_path / "state" / "audit.jsonl")
     assert settings.vaults_overlay_dir == tmp_path / "state" / "vaults.d"
+
+
+# --------------------------------------------------------------------------- adding a new vault
+
+NEW = """# A brand-new vault (this comment must survive).
+id: fresh
+title: Fresh vault
+description: Added in the console.
+rules:
+  - id: countersigned
+    title: Countersigned
+    criterion: The application is countersigned.
+    on_fail: no_cumple
+"""
+
+
+def with_id(vault_id: str, text: str = NEW) -> str:
+    return text.replace("id: fresh\n", f"id: {json.dumps(vault_id)}\n")
+
+
+def created_reg(tmp_path):
+    reg = registry(tmp_path)
+    reg.create(NEW, saved_by="admin", note="first version")
+    return reg
+
+
+def overlay_dir(tmp_path) -> Path:
+    return tmp_path / "state" / "vaults.d"
+
+
+def test_a_new_vault_is_saved_as_files_and_usable_at_once(tmp_path):
+    reg = registry(tmp_path)
+    vault_id, version = reg.create(NEW, saved_by="admin", note="first version")
+    assert (vault_id, version.version) == ("fresh", 1)
+    folder = overlay_dir(tmp_path) / "fresh"
+    assert (folder / "v1.yaml").read_text() == NEW  # the YAML, verbatim, comments included
+    index = json.loads((folder / "index.json").read_text())
+    assert index["created"] is True and index["versions"][0]["note"] == "first version"
+    assert oct((folder / "v1.yaml").stat().st_mode & 0o777) == "0o600"
+    assert oct((folder / "index.json").stat().st_mode & 0o777) == "0o600"
+    assert "fresh" in reg.ids() and reg.get("fresh").title == "Fresh vault"
+    info = reg.info("fresh")
+    assert (info.source, info.version, info.updated_by) == ("created", 1, "admin")
+    assert [(h.version, h.saved_by) for h in reg.history("fresh")] == [(1, "admin")]
+    assert reg.text("fresh") == NEW and reg.text("fresh", 1) == NEW
+
+
+def test_the_shipped_directory_is_never_written_when_adding_a_vault(tmp_path):
+    reg = registry(tmp_path)
+    before = sorted(p.name for p in (tmp_path / "vaults").iterdir())
+    reg.create(NEW, saved_by="admin")
+    assert sorted(p.name for p in (tmp_path / "vaults").iterdir()) == before
+    assert (tmp_path / "vaults" / "demo.yaml").read_text() == DEMO
+
+
+def test_a_new_vault_survives_a_restart(tmp_path):
+    created_reg(tmp_path)
+    again = VaultRegistry(tmp_path / "vaults", overlay=overlay_dir(tmp_path))
+    assert "fresh" in again.ids() and again.errors == []
+    info = again.info("fresh")
+    assert (info.source, info.version, info.note) == ("created", 1, "first version")
+
+
+@pytest.mark.parametrize("existing", ["demo", "other", "fresh"])
+def test_an_id_that_is_already_taken_is_refused_and_nothing_is_written(tmp_path, existing):
+    reg = created_reg(tmp_path)  # "demo" and "other" are shipped, "fresh" was just added
+    before = sorted(p.name for p in overlay_dir(tmp_path).iterdir())
+    with pytest.raises(VaultExists) as exc:
+        reg.create(with_id(existing), saved_by="admin")
+    assert exc.value.errors[0]["path"] == "id"
+    assert sorted(p.name for p in overlay_dir(tmp_path).iterdir()) == before
+    assert reg.get("demo").title == "Demo vault"  # a shipped vault was not replaced
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "new",
+        "New",
+        "UPPER",
+        "has space",
+        "a/b",
+        "../x",
+        "..",
+        "a.b",
+        "-lead",
+        "_lead",
+        "x" * 65,
+        "",
+    ],
+)
+def test_a_hostile_or_malformed_id_is_refused_before_anything_touches_the_disk(tmp_path, bad):
+    reg = registry(tmp_path)
+    with pytest.raises(VaultError):
+        reg.create(with_id(bad), saved_by="admin")
+    assert not overlay_dir(tmp_path).exists() or list(overlay_dir(tmp_path).iterdir()) == []
+    assert sorted(reg.ids()) == ["demo", "other"]
+
+
+def test_the_longest_and_simplest_ids_are_accepted(tmp_path):
+    reg = registry(tmp_path)
+    for name in ("a", "0", "x" * 64, "my-vault_2"):
+        reg.create(with_id(name), saved_by="admin")
+    assert {"a", "0", "x" * 64, "my-vault_2"} <= set(reg.ids())
+
+
+def test_an_invalid_new_vault_names_the_place_of_the_problem(tmp_path):
+    reg = registry(tmp_path)
+    with pytest.raises(VaultError) as syntax:
+        reg.create(NEW + "  bad: [unclosed\n", saved_by="admin")
+    assert syntax.value.errors[0]["line"] > 1
+    with pytest.raises(VaultError) as schema:
+        reg.create("id: empty\ntitle: No rules\nrules: []\n", saved_by="admin")
+    assert schema.value.errors[0]["path"] == "" or "rules" in json.dumps(schema.value.errors)
+    with pytest.raises(VaultError, match="larger than"):
+        reg.create(NEW + "# " + "x" * 300_000 + "\n", saved_by="admin")
+    assert sorted(reg.ids()) == ["demo", "other"] and not overlay_dir(tmp_path).exists()
+
+
+def test_adding_a_vault_needs_a_writable_state_directory(tmp_path):
+    reg = registry(tmp_path, overlay=False)
+    with pytest.raises(VaultUnavailable):
+        reg.create(NEW, saved_by="admin")
+
+
+def test_adding_a_vault_never_overwrites_files_already_on_disk(tmp_path):
+    reg = registry(tmp_path)
+    orphan = overlay_dir(tmp_path) / "fresh"
+    orphan.mkdir(parents=True)
+    (orphan / "v1.yaml").write_text("something an admin left here")
+    with pytest.raises(VaultError, match="already exist on disk"):
+        reg.create(NEW, saved_by="admin")
+    assert (orphan / "v1.yaml").read_text() == "something an admin left here"
+    assert "fresh" not in reg.ids()
+
+
+def test_a_failed_write_leaves_nothing_behind_and_a_retry_works(tmp_path, monkeypatch):
+    from sentinel import vault as vault_module
+
+    reg = registry(tmp_path)
+    real = vault_module._atomic_write
+    calls = []
+
+    def fail_on_the_index(path, text):
+        calls.append(path.name)
+        if path.name == "index.json":
+            raise OSError("disk full")
+        real(path, text)
+
+    monkeypatch.setattr(vault_module, "_atomic_write", fail_on_the_index)
+    with pytest.raises(OSError):
+        reg.create(NEW, saved_by="admin")
+    assert calls == ["v1.yaml", "index.json"]
+    assert not (overlay_dir(tmp_path) / "fresh").exists() and "fresh" not in reg.ids()
+    monkeypatch.setattr(vault_module, "_atomic_write", real)
+    assert reg.create(NEW, saved_by="admin")[0] == "fresh"  # nothing stood in the way
+
+
+def test_a_new_vault_can_be_edited_and_keeps_its_own_history(tmp_path):
+    reg = created_reg(tmp_path)
+    edited = NEW.replace("Added in the console.", "Edited later.")
+    saved = reg.save("fresh", edited, saved_by="admin", base_version=1, note="tweak")
+    assert saved.version == 2
+    info = reg.info("fresh")
+    assert (info.source, info.version) == ("created", 2)  # still an added vault, not "edited"
+    assert [h.version for h in reg.history("fresh")] == [1, 2]
+    assert reg.text("fresh", 1) == NEW and reg.text("fresh") == edited
+    again = VaultRegistry(tmp_path / "vaults", overlay=overlay_dir(tmp_path))
+    assert (again.info("fresh").source, again.info("fresh").version) == ("created", 2)
+    assert again.text("fresh", 1) == NEW
+    with pytest.raises(VaultConflict):
+        reg.save("fresh", edited, saved_by="admin", base_version=1)
+
+
+def test_a_shipped_vault_that_later_takes_the_same_id_wins_and_is_reported(tmp_path):
+    created_reg(tmp_path)
+    (tmp_path / "vaults" / "fresh.yaml").write_text(
+        NEW.replace("Fresh vault", "Shipped fresh vault")
+    )
+    again = VaultRegistry(tmp_path / "vaults", overlay=overlay_dir(tmp_path))
+    assert again.get("fresh").title == "Shipped fresh vault"
+    assert again.info("fresh").source == "shipped" and again.info("fresh").version == 1
+    assert any("fresh" in problem and "shipped" in problem for problem in again.errors)
+
+
+def test_the_number_of_vaults_is_capped(tmp_path, monkeypatch):
+    from sentinel import vault as vault_module
+
+    reg = registry(tmp_path)  # two shipped
+    monkeypatch.setattr(vault_module, "MAX_VAULTS", 3)
+    reg.create(with_id("third"), saved_by="admin")
+    with pytest.raises(VaultError, match="at most 3"):
+        reg.create(with_id("fourth"), saved_by="admin")
+
+
+def test_the_starter_the_form_offers_is_a_valid_vault_that_can_be_created(tmp_path):
+    from sentinel.vault import STARTER_VAULT
+
+    vault = parse_vault(STARTER_VAULT)
+    assert vault.id == "my_new_vault" and len(vault.rules) == 2
+    reg = registry(tmp_path)
+    assert reg.check_new(STARTER_VAULT).id == "my_new_vault"
+    assert reg.create(STARTER_VAULT, saved_by="admin")[0] == "my_new_vault"
+    assert reg.text("my_new_vault") == STARTER_VAULT  # comments and all
+
+
+def test_the_cli_lists_and_uses_vaults_added_in_the_console(cli_state, tmp_path, capsys):
+    cli, _ = cli_state
+    VaultRegistry(tmp_path / "vaults", overlay=overlay_dir(tmp_path)).create(NEW, saved_by="admin")
+    assert cli.main(["vaults"]) == 0
+    assert "fresh\t1 rules\tFresh vault" in capsys.readouterr().out
+
+
+# ---- the admin API
+
+
+def create(client, yaml_text=NEW, **kwargs):
+    kwargs.setdefault("auth", ADMIN)
+    kwargs.setdefault("headers", HEADER)
+    return client.post("/v1/admin/vaults", json={"yaml": yaml_text, "note": "hello"}, **kwargs)
+
+
+def test_only_an_admin_with_the_header_and_json_can_add_a_vault(tmp_path):
+    client, _, _ = make(tmp_path, access_password=VISITOR[1], access_user=VISITOR[0])
+    assert create(client, auth=None).status_code == 401
+    assert create(client, auth=VISITOR).status_code == 401
+    assert create(client, headers={}).status_code == 403
+    form = client.post("/v1/admin/vaults", data={"yaml": NEW}, auth=ADMIN, headers=HEADER)
+    assert form.status_code == 415
+    for path in ("/v1/admin/vaults/new", "/v1/admin/vaults/new/validate"):
+        assert (
+            client.get(path).status_code == 401
+            and client.get(path, auth=VISITOR).status_code == 401
+        )
+    ids = [v["id"] for v in client.get("/v1/admin/vaults", auth=ADMIN).json()["vaults"]]
+    assert ids == ["demo", "other"]  # nothing was added
+
+
+def test_adding_a_vault_through_the_api_makes_it_usable_everywhere(tmp_path):
+    client, _, prompts = make(tmp_path)
+    resp = create(client)
+    assert resp.status_code == 201
+    body = resp.json()
+    assert (body["id"], body["source"], body["version"], body["created_version"]) == (
+        "fresh",
+        "created",
+        1,
+        1,
+    )
+    assert (body["updated_by"], body["note"], body["rule_count"]) == ("admin", "hello", 1)
+
+    detail = client.get("/v1/admin/vaults/fresh", auth=ADMIN).json()
+    assert detail["yaml"] == NEW and detail["source"] == "created" and detail["editable"] is True
+    assert [(h["version"], h["saved_by"]) for h in detail["history"]] == [(1, "admin")]
+
+    public = {v["id"]: v for v in client.get("/v1/vaults").json()}  # what the apps list
+    assert public["fresh"]["title"] == "Fresh vault" and set(public) == {"demo", "other", "fresh"}
+
+    review = client.post(
+        "/v1/reviews", data={"vault_id": "fresh"}, files={"file": ("a.txt", b"Signed: yes")}
+    )
+    assert review.status_code == 200 and review.json()["vault_id"] == "fresh"
+    assert any("The application is countersigned." in p for p in prompts)  # the new rule
+
+
+def test_a_vault_added_through_the_api_can_be_edited_through_the_api(tmp_path):
+    client, _, _ = make(tmp_path)
+    create(client)
+    edited = NEW.replace("Added in the console.", "Edited later.")
+    resp = put(client, "fresh", yaml=edited, base_version=1)
+    assert resp.status_code == 200 and resp.json()["saved_version"] == 2
+    assert client.get("/v1/admin/vaults/fresh", auth=ADMIN).json()["source"] == "created"
+
+
+def test_the_form_starts_from_a_starter_that_is_not_mistaken_for_a_vault(tmp_path):
+    from sentinel.vault import STARTER_VAULT
+
+    client, _, _ = make(tmp_path)
+    resp = client.get("/v1/admin/vaults/new", auth=ADMIN)
+    assert resp.status_code == 200 and resp.json() == {"yaml": STARTER_VAULT, "editable": True}
+    assert (
+        make(tmp_path / "ro", overlay=False)[0]
+        .get("/v1/admin/vaults/new", auth=ADMIN)
+        .json()["editable"]
+        is False
+    )
+
+
+def test_validating_a_new_vault_checks_the_id_and_yaml_without_saving(tmp_path):
+    client, _, _ = make(tmp_path)
+
+    def validate(text):
+        return client.post(
+            "/v1/admin/vaults/new/validate", json={"yaml": text}, auth=ADMIN, headers=HEADER
+        )
+
+    ok = validate(NEW)
+    assert ok.status_code == 200 and ok.json() == {
+        "ok": True,
+        "id": "fresh",
+        "title": "Fresh vault",
+        "rule_count": 1,
+    }
+    taken = validate(with_id("demo"))
+    assert taken.status_code == 409 and taken.json()["detail"]["errors"][0]["path"] == "id"
+    reserved = validate(with_id("new"))
+    assert reserved.status_code == 422 and "reserved" in json.dumps(reserved.json())
+    syntax = validate(NEW + "  bad: [unclosed\n")
+    assert syntax.status_code == 422 and syntax.json()["detail"]["errors"][0]["line"] > 1
+    ids = [v["id"] for v in client.get("/v1/admin/vaults", auth=ADMIN).json()["vaults"]]
+    assert ids == ["demo", "other"]  # nothing was saved
+
+
+def test_adding_a_vault_reports_what_is_wrong_and_changes_nothing(tmp_path):
+    client, _, _ = make(tmp_path)
+    assert create(client).status_code == 201
+    again = create(client)  # the same id
+    assert again.status_code == 409 and again.json()["detail"]["errors"][0]["path"] == "id"
+    assert create(client, with_id("demo")).status_code == 409  # a shipped id
+    assert create(client, with_id("new")).status_code == 422
+    assert create(client, with_id("../x")).status_code == 422
+    assert create(client, NEW + "# " + "x" * 300_000).status_code == 413
+    ids = [v["id"] for v in client.get("/v1/admin/vaults", auth=ADMIN).json()["vaults"]]
+    assert ids == ["demo", "other", "fresh"]
+
+
+def test_adding_a_vault_is_unavailable_without_a_writable_state_directory(tmp_path):
+    client, _, _ = make(tmp_path, overlay=False)
+    assert create(client).status_code == 501
+
+
+def test_adding_a_vault_is_audited_by_hash_without_copying_it(tmp_path):
+    client, cfg, _ = make(tmp_path)
+    create(client)
+    audit = cfg.audit_log_path.read_text()
+    assert "Added in the console." not in audit and "countersigned" not in audit
+    event = json.loads(audit.splitlines()[-1])
+    assert (event["event"], event["admin"], event["vault_id"], event["version"]) == (
+        "vault_created",
+        "admin",
+        "fresh",
+        1,
+    )
+    assert len(event["sha256"]) == 64 and event["note"] == "hello"
+
+
+def test_the_status_page_counts_added_vaults(tmp_path):
+    client, _, _ = make(tmp_path)
+    create(client)
+    put(client)  # and one shipped vault edited
+    checks = {c["name"]: c for c in client.get("/v1/admin/status", auth=ADMIN).json()["checks"]}
+    detail = checks["vault edits"]["detail"]
+    assert "1 edited in the console: demo" in detail and "1 added in the console: fresh" in detail
+
+
+def test_the_new_vault_page_is_a_shell_that_the_vault_route_does_not_take(tmp_path):
+    client, _, _ = make(tmp_path, access_password=VISITOR[1], access_user=VISITOR[0])
+    page = client.get("/admin/vaults/new")
+    assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    assert page.headers["content-security-policy"].startswith("default-src 'none'")
+    assert "Original description" not in page.text
+    slash = client.get("/admin/vaults/new/", follow_redirects=False)
+    assert slash.status_code == 307 and slash.headers["location"] == "/admin/vaults/new"
+    # an existing vault's page still works next to it
+    assert client.get("/admin/vaults/demo").status_code == 200

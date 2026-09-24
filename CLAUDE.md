@@ -53,6 +53,11 @@ docker compose up --build        # app only; the model runs on your dedicated GP
   them: saves are numbered versions in a writable overlay (`<audit dir>/vaults.d/`, 0600), guarded
   by `base_version` (409 on a stale save) and audited by SHA-256 only. The API and the CLI must
   build their registry from `Settings.vaults_overlay_dir` so they always agree on the live vault.
+  New vaults (`/admin/vaults/new`, `VaultRegistry.create`) live in the same overlay (index marked
+  `created`, starting at v1). Their id becomes a directory name, so `check_new` must run before
+  any file is touched (lowercase `[a-z0-9_-]{1,64}`, not reserved like `new`, not taken) and
+  creation must never overwrite existing files. Keep `/admin/vaults/new` and
+  `/v1/admin/vaults/new*` registered before the `{vault_id}` routes.
 
 ## Gotchas
 

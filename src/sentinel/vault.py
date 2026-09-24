@@ -4,6 +4,10 @@ Shipped vaults are read-only files in `vaults/`. An admin can edit a vault at ru
 is validated exactly like a shipped file and stored as a new numbered version in a writable
 *overlay* directory (one folder per vault). The overlay takes precedence over the shipped file,
 which is never modified. Version 1 is always the shipped file; overlay versions start at 2.
+
+An admin can also add a brand-new vault. It is stored in the same overlay (`<id>/v1.yaml` plus an
+index marked `created`), has no shipped file, and starts at its own version 1. Everything that reads
+vaults (the API, reviews, the CLI) goes through the registry, so a new vault is usable at once.
 """
 
 from __future__ import annotations
@@ -12,6 +16,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+import shutil
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +33,40 @@ log = logging.getLogger(__name__)
 
 MAX_VAULT_BYTES = 256 * 1024
 MAX_NOTE_CHARS = 200
+MAX_VAULTS = 100
+# The id of a new vault becomes a directory name, so it is stricter than the id a shipped vault may
+# have: lowercase, no dots, at most 64 characters. `new` is reserved for the /admin/vaults/new page.
+_NEW_ID_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
+RESERVED_IDS = frozenset({"new"})
+
+# What the "add a vault" form starts from. A test keeps it valid.
+STARTER_VAULT = """\
+# A vault is a set of rules that documents are reviewed against.
+# id: lowercase letters, digits, "-" and "_" (up to 64). It cannot be changed later.
+id: my_new_vault
+title: My new vault
+description: One sentence on what this vault checks.
+language: en
+rules:
+  # A criterion rule: the model judges it and must quote the document as evidence.
+  - id: signed-and-dated
+    title: The document is signed and dated
+    severity: medium
+    criterion: >-
+      The document must carry a signature and a date. Cite the passage that shows both.
+    on_fail: no_cumple
+
+  # A check rule: the model extracts facts (each backed by a quote) and a deterministic
+  # expression decides. Use "revisar" (a human decides) when a failure is not clear-cut.
+  - id: amount-within-limit
+    title: The amount does not exceed the limit
+    severity: high
+    facts:
+      - { name: amount, type: number, description: "The total amount stated in the document" }
+    references: { limit: 10000 }
+    check: "amount <= limit"
+    on_fail: revisar
+"""
 
 
 class VaultError(ValueError):
@@ -47,6 +87,14 @@ class VaultConflict(VaultError):
     def __init__(self, current: int):
         super().__init__(f"the vault changed: version {current} is now current")
         self.current = current
+
+
+class VaultExists(VaultError):
+    """A vault with that id already exists (shipped or added in the console)."""
+
+    def __init__(self, vault_id: str):
+        message = f"a vault with the id {vault_id!r} already exists"
+        super().__init__(message, [{"path": "id", "message": message}])
 
 
 class VaultUnavailable(VaultError):
@@ -102,7 +150,7 @@ class VersionInfo:
 @dataclass(frozen=True)
 class VaultInfo:
     version: int
-    source: Literal["shipped", "edited"]
+    source: Literal["shipped", "edited", "created"]  # created: added in the console
     updated_by: str | None
     updated_at: str | None
     note: str
@@ -189,6 +237,10 @@ class VaultRegistry:
         if vault.id != folder.name:
             raise VaultError(f"vault id {vault.id!r} does not match its folder")
         vid = vault.id
+        created = bool(index.get("created"))
+        if created and vid in shipped:
+            # Two different vaults would share an id and version numbers. The shipped one wins.
+            raise VaultError(f"a shipped vault with the id {vid!r} now exists")
         pin = index.get("shipped_sha256")
         vaults[vid], texts[vid] = vault, text
         history[vid] = [*history.get(vid, []), *versions]
@@ -197,7 +249,7 @@ class VaultRegistry:
         shipped_changed = bool(vid in shipped and pin and _sha256(shipped[vid]) != pin)
         info[vid] = VaultInfo(
             current.version,
-            "edited",
+            "created" if created else "edited",
             current.saved_by,
             current.saved_at,
             current.note,
@@ -238,7 +290,7 @@ class VaultRegistry:
                 return self._texts[vault_id]
             if version == 1 and vault_id in self._shipped:
                 return self._shipped[vault_id]
-        if self.overlay is None or version is None or version < 2:
+        if self.overlay is None or version is None or version < 1:
             raise VaultError(f"vault {vault_id!r} has no version {version}")
         try:
             return (self.overlay / vault_id / f"v{version}.yaml").read_text(encoding="utf-8")
@@ -297,7 +349,7 @@ class VaultRegistry:
             self._pinned[vault_id] = pin or ""
             info = VaultInfo(
                 version,
-                "edited",
+                "created" if self._info[vault_id].source == "created" else "edited",
                 saved_by,
                 now,
                 entry["note"],
@@ -307,6 +359,69 @@ class VaultRegistry:
             saved = VersionInfo(version, saved_by, now, entry["note"], entry["sha256"])
             self._history[vault_id].append(saved)
             return saved
+
+    def check_new(self, text: str) -> Vault:
+        """What `create` checks, without writing anything. Raises VaultError or VaultExists."""
+        vault = parse_vault(text, "vault")
+        vid = vault.id
+        if vid in RESERVED_IDS:
+            message = f"{vid!r} is reserved: it is the address of the new-vault page"
+            raise VaultError(message, [{"path": "id", "message": message}])
+        if not _NEW_ID_RE.fullmatch(vid):
+            message = (
+                "a new vault's id may use lowercase letters, digits, '-' and '_' "
+                "(1 to 64, starting with a letter or digit)"
+            )
+            raise VaultError(message, [{"path": "id", "message": message}])
+        with self._lock:
+            if vid in self._vaults:
+                raise VaultExists(vid)
+            if len(self._vaults) >= MAX_VAULTS:
+                raise VaultError(f"at most {MAX_VAULTS} vaults")
+        return vault
+
+    def create(self, text: str, *, saved_by: str, note: str = "") -> tuple[str, VersionInfo]:
+        """Validate `text` and store it as a brand-new vault, version 1. All or nothing; it never
+        overwrites anything already on disk."""
+        if self.overlay is None:
+            raise VaultUnavailable("adding vaults is not available on this deployment")
+        with self._lock:
+            vault = self.check_new(text)
+            vid = vault.id
+            folder = self.overlay / vid
+            if self.overlay.resolve() not in folder.resolve().parents:
+                raise VaultError("invalid vault id")  # the id pattern already rules this out
+            if folder.exists():
+                message = (
+                    f"files for a vault named {vid!r} already exist on disk but could not be "
+                    f"loaded, so nothing was written; repair or remove {folder}"
+                )
+                raise VaultError(message, [{"path": "id", "message": message}])
+            now = datetime.now(UTC).isoformat(timespec="seconds")
+            entry = {
+                "version": 1,
+                "saved_by": saved_by,
+                "saved_at": now,
+                "note": note.strip()[:MAX_NOTE_CHARS],
+                "sha256": _sha256(text),
+            }
+            try:  # the version first, then the index, like an edit
+                _atomic_write(folder / "v1.yaml", text)
+                _atomic_write(
+                    folder / "index.json",
+                    json.dumps({"created": True, "versions": [entry]}, indent=2),
+                )
+            except OSError:
+                # The folder did not exist before this call, so removing it is safe.
+                shutil.rmtree(folder, ignore_errors=True)
+                raise
+            self._vaults[vid] = vault
+            self._texts[vid] = text
+            self._pinned[vid] = ""
+            self._info[vid] = VaultInfo(1, "created", saved_by, now, entry["note"], False)
+            created = VersionInfo(1, saved_by, now, entry["note"], entry["sha256"])
+            self._history[vid] = [created]
+            return vid, created
 
     def __iter__(self):
         with self._lock:

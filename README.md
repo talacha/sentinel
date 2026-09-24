@@ -94,7 +94,7 @@ The query is rendered from the vault's template using only vault parameters and 
 ```bash
 git clone https://github.com/talacha/sentinel.git && cd sentinel
 uv sync                  # creates .venv and installs the pinned dependencies
-uv run pytest            # optional: confirm the install (397 tests, no network)
+uv run pytest            # optional: confirm the install (435 tests, no network)
 ```
 
 No uv? Plain `pip` works too (`python3 -m venv .venv && source .venv/bin/activate && pip install -e .`); see [Running locally](docs/running-locally.md#2-install-dependencies).
@@ -122,7 +122,7 @@ Uploads are limited to 20 MB by default. Without `ACCESS_PASSWORD`, anyone who c
 
 ### Check and configure a running service
 
-`/admin` is the admin console; it lists everything an admin can do and links to it. `/status` shows whether the service has working keys and existing models (static checks instantly, or *Run live checks* to test them for real). `/admin/config` is a form to override the server's environment values at runtime, such as the model id, limits, or keys (write-only). `/admin/users` lists the users and lets an admin add users and edit a user's role and password (chosen, or generated and shown once). `/admin/vaults` lists the vaults, shows the current version of each, and lets an admin edit one as a new, validated, versioned save. All need `ADMIN_PASSWORD`; see the [reference](docs/reference.md#admin-console-admin).
+`/admin` is the admin console; it lists everything an admin can do and links to it. `/status` shows whether the service has working keys and existing models (static checks instantly, or *Run live checks* to test them for real). `/admin/config` is a form to override the server's environment values at runtime, such as the model id, limits, or keys (write-only). `/admin/users` lists the users and lets an admin add users and edit a user's role and password (chosen, or generated and shown once). `/admin/vaults` lists the vaults, shows the current version of each, and lets an admin edit one as a new, validated, versioned save, or add a new vault at `/admin/vaults/new` (saved as a file and usable for reviews at once). All need `ADMIN_PASSWORD`; see the [reference](docs/reference.md#admin-console-admin).
 
 ### Docker
 
@@ -159,7 +159,7 @@ The full format and validation rules are in the [reference](docs/reference.md#va
 **Verified**
 
 - **Live model and search (2026-09-23):** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` through Nebius Token Factory plus live Tavily searches, using `evals/run_evals.py`: **24 of 24 verdicts as expected** across the insurance, legal, and health samples, with no evidence warnings. Token Factory accepts the JSON-schema mode and the reasoning parameter. This is a small suite of synthetic documents, a strong smoke test rather than a benchmark.
-- 397 automated tests pass with no network: ingest and quote location, the LLM client, extraction, checks, the egress guard, the verdict policy, the engine, the audit log (asserted free of document text), login, CORS, the review cap, the admin console (secrets never leave, invalid changes apply nothing, users can be added and edited without ever locking the console or the visitor login out, vault edits are validated and versioned), preflight, and the shipped vaults run through the engine.
+- 435 automated tests pass with no network: ingest and quote location, the LLM client, extraction, checks, the egress guard, the verdict policy, the engine, the audit log (asserted free of document text), login, CORS, the review cap, the admin console (secrets never leave, invalid changes apply nothing, users can be added and edited without ever locking the console or the visitor login out, vault edits are validated and versioned), preflight, and the shipped vaults run through the engine.
 - The client app and the admin console driven end to end in jsdom against a live service; the console was exercised against the real Token Factory and Tavily keys and found a wrong model id, then fixed it, with no secret ever appearing on a page. The admin console was also opened in a real Chrome (light, dark, and phone width). The client app has not been checked visually in a real browser.
 - The Docker image and the public stack (app behind Caddy with HTTPS, visitor and admin logins, security headers) run locally.
 

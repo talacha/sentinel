@@ -249,12 +249,16 @@
       <div id="vaults-list" hidden>
         <div id="vaults-notice"></div>
         <div class="card">
+          <div class="toolbar">
+            <h2>All vaults</h2>
+            <a id="vault-new" class="btn primary" href="/admin/vaults/new">New vault</a>
+          </div>
           <table class="grid" aria-label="Vaults">
             <thead><tr><th scope="col">Vault</th><th scope="col">Rules</th><th scope="col">Version</th><th scope="col">Last change</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
             <tbody id="vaults-body"></tbody>
           </table>
         </div>
-        <p class="muted">Editing a vault saves a new version that applies to new reviews immediately. The shipped files are never modified, and every earlier version stays viewable.</p>
+        <p class="muted">Editing a vault saves a new version that applies to new reviews immediately. A new vault is saved as a file on the server and can be used for reviews as soon as it is created. The shipped files are never modified, and every earlier version stays viewable.</p>
       </div>
 
       <div id="vault-view" hidden>
@@ -498,7 +502,8 @@ async function loadHub(alive) {
     const admins = users.users.filter((u) => u.role === "admin").length;
     setFact("fact-users", `${plural(users.users.length, "user", "users")} · ${admins} admin, ${users.users.length - admins} visitor`);
     const edited = vaults.vaults.filter((v) => v.source === "edited").length;
-    setFact("fact-vaults", `${plural(vaults.vaults.length, "vault", "vaults")}${edited ? ` · ${edited} edited` : ""}`);
+    const added = vaults.vaults.filter((v) => v.source === "created").length;
+    setFact("fact-vaults", `${plural(vaults.vaults.length, "vault", "vaults")}${edited ? ` · ${edited} edited` : ""}${added ? ` · ${added} added` : ""}`);
   });
   if (alive() && auth.user === null) $("hub-signin").hidden = false;
 }
@@ -861,7 +866,7 @@ async function editUser(mode, user) {
 // Three views, chosen by the URL: /admin/vaults (list), /admin/vaults/<id> (the current version),
 // /admin/vaults/<id>/edit (editor).
 
-const vaultState = { id: null, baseVersion: null, original: "", loaded: false };
+const vaultState = { id: null, baseVersion: null, original: "", loaded: false, mode: "edit" };
 const vaultUrl = (id, suffix = "") => `/admin/vaults/${encodeURIComponent(id)}${suffix}`;
 const vaultApi = (id, suffix = "") => `/v1/admin/vaults/${encodeURIComponent(id)}${suffix}`;
 
@@ -877,7 +882,8 @@ function showVaultView(which) {
   for (const id of ["vaults-list", "vault-view", "vault-edit"]) $(id).hidden = id !== which;
 }
 
-const versionBadge = (v) => (v.source === "edited" ? `edited, version ${v.version}` : "shipped, version 1");
+const versionBadge = (v) => (v.source === "edited" ? `edited, version ${v.version}` :
+  v.source === "created" ? `added here, version ${v.version}` : "shipped, version 1");
 
 async function loadVaultList(alive) {
   showVaultView("vaults-list");
@@ -886,6 +892,7 @@ async function loadVaultList(alive) {
   if (!alive()) return;
   const notice = $("vaults-notice");
   notice.replaceChildren();
+  $("vault-new").hidden = !data.editable;
   if (!data.editable) notice.append(h("p", { class: "notice" }, "Editing is not available on this deployment (there is no writable state directory). Vaults can be viewed only."));
   for (const problem of data.problems) notice.append(h("p", { class: "notice" }, `Saved edits were ignored: ${problem}`));
   const body = $("vaults-body");
@@ -896,8 +903,8 @@ async function loadVaultList(alive) {
     body.append(h("tr", {},
       h("th", { scope: "row" }, link(v.title, vaultUrl(v.id)), h("br"), h("span", { class: "muted" }, v.id)),
       h("td", {}, String(v.rule_count)),
-      h("td", {}, h("span", { class: `role ${v.source === "edited" ? "admin" : ""}` }, versionBadge(v))),
-      h("td", { class: "detail" }, v.source === "edited" ? `${v.updated_by || "?"}, ${fmtDate(v.updated_at)}` : "not edited"),
+      h("td", {}, h("span", { class: `role ${v.source !== "shipped" ? "admin" : ""}` }, versionBadge(v))),
+      h("td", { class: "detail" }, v.source !== "shipped" ? `${v.updated_by || "?"}, ${fmtDate(v.updated_at)}` : "not edited"),
       h("td", { class: "right" }, actions)));
   }
 }
@@ -918,7 +925,7 @@ async function loadVaultView(id, version, alive) {
   const notices = $("view-notices");
   notices.replaceChildren(
     h("p", {}, h("strong", {}, `Current version: ${versionBadge(d)}`),
-      d.source === "edited" ? ` (saved by ${d.updated_by || "?"} on ${fmtDate(d.updated_at)}${d.note ? `: ${d.note}` : ""})` : ""));
+      d.source !== "shipped" ? ` (saved by ${d.updated_by || "?"} on ${fmtDate(d.updated_at)}${d.note ? `: ${d.note}` : ""})` : ""));
   if (!d.is_current) {
     notices.append(h("p", { class: "notice" }, `You are viewing an earlier version (${d.viewing_version}), not the one in use. `,
       link("Show the current version", vaultUrl(d.id))));
@@ -957,6 +964,8 @@ function showEditorErrors(errors, ok) {
 async function loadVaultEdit(id, alive) {
   showVaultView("vault-edit");
   vaultState.loaded = false;
+  vaultState.mode = "edit";
+  $("edit-save").textContent = "Save as new version";
   setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], [id, vaultUrl(id)], ["Edit"]], title: `Edit ${id}`, lede: "" });
   const d = await fetchVault(id);
   if (!alive()) return;
@@ -973,11 +982,32 @@ async function loadVaultEdit(id, alive) {
   $("edit-status").textContent = "";
 }
 
+// The "add a vault" page: the same editor, started from a template.
+async function loadVaultNew(alive) {
+  showVaultView("vault-edit");
+  vaultState.loaded = false;
+  vaultState.mode = "new";
+  vaultState.id = null;
+  $("edit-save").textContent = "Create vault";
+  setHead({ crumbs: [["Console", "/admin"], ["Vaults", "/admin/vaults"], ["New"]], title: "New vault", lede: "Add a policy that documents can be reviewed against." });
+  const d = await getJson("/v1/admin/vaults/new", "the starter vault");
+  if (!alive()) return;
+  if (!d.editable) throw new Stop("Adding vaults is not available on this deployment.");
+  vaultState.original = d.yaml;
+  vaultState.loaded = true;
+  $("edit-intro").textContent = "Write the vault as YAML, starting from this example. The id (the first line after the comments) names the vault and cannot be changed later. It is saved as a file on the server and used for reviews as soon as it is created.";
+  $("edit-yaml").value = d.yaml;
+  $("edit-note").value = "";
+  $("edit-errors").hidden = true;
+  $("edit-status").textContent = "";
+}
+
 async function loadVaults(route, alive) {
   banner("");
   const version = Number(new URLSearchParams(location.search).get("version")) || null;
   await run(async () => {
-    if (!route.id) await loadVaultList(alive);
+    if (route.isNew) await loadVaultNew(alive);
+    else if (!route.id) await loadVaultList(alive);
     else if (route.edit) await loadVaultEdit(route.id, alive);
     else await loadVaultView(route.id, version, alive);
   });
@@ -987,11 +1017,15 @@ async function validateVault() {
   $("edit-status").textContent = "Checking…";
   let ok = false;
   await run(async () => {
-    const resp = await api(vaultApi(vaultState.id, "/validate"), { method: "POST", json: { yaml: $("edit-yaml").value } });
+    const adding = vaultState.mode === "new";
+    const url = adding ? "/v1/admin/vaults/new/validate" : vaultApi(vaultState.id, "/validate");
+    const resp = await api(url, { method: "POST", json: { yaml: $("edit-yaml").value } });
     const data = await resp.json().catch(() => ({}));
-    if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
+    if ((resp.status === 422 || resp.status === 409) && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
     if (!resp.ok) { showEditorErrors(`Validation failed (HTTP ${resp.status}).`); return; }
-    showEditorErrors(`Valid: "${data.title}" with ${data.rule_count} rules. Nothing has been saved yet.`, true);
+    showEditorErrors(adding
+      ? `Valid: "${data.title}" (id ${data.id}) with ${data.rule_count} rules, and the id is free. Nothing has been created yet.`
+      : `Valid: "${data.title}" with ${data.rule_count} rules. Nothing has been saved yet.`, true);
     ok = true;
   });
   $("edit-status").textContent = "";
@@ -1025,6 +1059,26 @@ async function saveVault() {
   banner(`Saved as version ${saved}. It applies to new reviews immediately.`, "ok");
 }
 
+async function createVault() {
+  $("edit-status").textContent = "Creating…";
+  let created = null;
+  await run(async () => {
+    const resp = await api("/v1/admin/vaults", { method: "POST", json: { yaml: $("edit-yaml").value, note: $("edit-note").value } });
+    const data = await resp.json().catch(() => ({}));
+    if ((resp.status === 422 || resp.status === 409) && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
+    if (resp.status === 413) { showEditorErrors("The vault is too large to save."); return; }
+    if (resp.status === 501) { showEditorErrors("Adding vaults is not available on this deployment."); return; }
+    if (!resp.ok) { showEditorErrors(`Create failed (HTTP ${resp.status}).`); return; }
+    created = data.id;
+  });
+  $("edit-status").textContent = "";
+  if (created === null) return;
+  vaultState.loaded = false; // created: nothing left to discard
+  history.pushState(null, "", vaultUrl(created));
+  await render();
+  banner(`Created the vault ${created}. It is saved as a file on the server and available for reviews now.`, "ok");
+}
+
 // ------------------------------------------------------------------------------ pages and routing
 
 const PAGES = {
@@ -1032,7 +1086,7 @@ const PAGES = {
   status: { nav: "status", title: "Status", lede: "Whether the service has working keys and existing models." },
   config: { nav: "config", title: "Configuration", lede: "Override the values set in the server's environment. Changes apply immediately and survive a restart; every change is recorded in the audit log (field names only). Secrets are write-only: they are never shown again." },
   users: { nav: "users", title: "Users", lede: "Who can sign in to the service and to this console." },
-  vaults: { nav: "vaults", title: "Vaults", lede: "The policies documents are reviewed against." },
+  vaults: { nav: "vaults", title: "Vaults", lede: "The policies documents are reviewed against. Add a vault, or edit one; the shipped files are never modified." },
 };
 
 function parseRoute(pathname) {
@@ -1041,6 +1095,7 @@ function parseRoute(pathname) {
   if (p === "/status") return { page: "status" };
   if (p === "/admin/config") return { page: "config" };
   if (p === "/admin/users") return { page: "users" };
+  if (p === "/admin/vaults/new") return { page: "vaults", id: null, edit: false, isNew: true };
   const m = p.match(/^\/admin\/vaults(?:\/([^/]+?)(\/edit)?)?$/);
   if (m) return { page: "vaults", id: m[1] ? decodeURIComponent(m[1]) : null, edit: Boolean(m[2]) };
   return null;
@@ -1138,8 +1193,8 @@ $("verify").addEventListener("click", async () => {
 });
 $("user-add").addEventListener("click", () => editUser("add"));
 $("edit-validate").addEventListener("click", () => validateVault());
-$("edit-save").addEventListener("click", () => saveVault());
-$("edit-cancel").addEventListener("click", () => navigate(vaultUrl(vaultState.id)));
+$("edit-save").addEventListener("click", () => (vaultState.mode === "new" ? createVault() : saveVault()));
+$("edit-cancel").addEventListener("click", () => navigate(vaultState.mode === "new" ? "/admin/vaults" : vaultUrl(vaultState.id)));
 $("signout").addEventListener("click", () => { auth.user = auth.pass = null; location.reload(); });
 
 render();

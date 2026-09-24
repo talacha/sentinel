@@ -37,8 +37,10 @@ from .users import (
 )
 from .vault import (
     MAX_VAULT_BYTES,
+    STARTER_VAULT,
     VaultConflict,
     VaultError,
+    VaultExists,
     VaultRegistry,
     VaultUnavailable,
     parse_vault,
@@ -106,6 +108,13 @@ class VaultSave(BaseModel):
 
 class VaultValidate(BaseModel):
     yaml: str
+
+
+class VaultCreate(BaseModel):
+    """A brand-new vault. Its id comes from the YAML."""
+
+    yaml: str
+    note: str = ""
 
 
 class UserCreate(BaseModel):
@@ -373,14 +382,16 @@ def create_app(
         try:
             registry = get_registry()
             edited = [v for v in registry.ids() if registry.info(v).source == "edited"]
+            added = [v for v in registry.ids() if registry.info(v).source == "created"]
             if registry.errors:
                 report.add("vault edits", "warn", "; ".join(registry.errors))
-            elif edited:
-                report.add(
-                    "vault edits",
-                    "pass",
-                    f"{len(edited)} edited in the console: {', '.join(edited)}",
-                )
+            elif edited or added:
+                parts = []
+                if edited:
+                    parts.append(f"{len(edited)} edited in the console: {', '.join(edited)}")
+                if added:
+                    parts.append(f"{len(added)} added in the console: {', '.join(added)}")
+                report.add("vault edits", "pass", "; ".join(parts))
         except VaultError:
             pass  # a broken shipped vault directory is already reported by the vaults check
         if runtime.load_error:
@@ -590,6 +601,55 @@ def create_app(
             "problems": registry.errors,
         }
 
+    # `new` is not a vault id (it is reserved), so these come before the /{vault_id} routes.
+    @app.get("/v1/admin/vaults/new")
+    def admin_new_vault() -> dict:
+        """What the "add a vault" form starts from."""
+        return {"yaml": STARTER_VAULT, "editable": get_registry().editable}
+
+    @app.post("/v1/admin/vaults/new/validate", dependencies=[Depends(admin_write)])
+    def admin_validate_new_vault(body: VaultValidate) -> dict:
+        """Check a new vault's YAML and id without saving: exactly what creating it would check."""
+        try:
+            vault = get_registry().check_new(body.yaml)
+        except VaultExists as exc:
+            raise HTTPException(409, {"errors": exc.errors}) from exc
+        except VaultError as exc:
+            raise HTTPException(422, {"errors": exc.errors}) from exc
+        return {"ok": True, "id": vault.id, "title": vault.title, "rule_count": len(vault.rules)}
+
+    @app.post("/v1/admin/vaults", status_code=201, dependencies=[Depends(admin_write)])
+    def admin_create_vault(body: VaultCreate, request: Request) -> dict:
+        """Add a new vault. It is stored as a file, validated like a shipped one, and used for
+        reviews immediately. It never overwrites an existing vault."""
+        registry = get_registry()
+        if len(body.yaml.encode("utf-8")) > MAX_VAULT_BYTES:
+            raise HTTPException(
+                413, {"errors": [{"path": "", "message": "the vault is too large"}]}
+            )
+        try:
+            vault_id, created = registry.create(
+                body.yaml, saved_by=request.state.user.username, note=body.note
+            )
+        except VaultExists as exc:
+            raise HTTPException(409, {"errors": exc.errors}) from exc
+        except VaultUnavailable as exc:
+            raise HTTPException(501, {"message": str(exc)}) from exc
+        except VaultError as exc:
+            raise HTTPException(422, {"errors": exc.errors}) from exc
+        try:  # by hash: the vault text itself is not copied into the audit log
+            audit.event(
+                "vault_created",
+                admin=request.state.user.username,
+                vault_id=vault_id,
+                version=created.version,
+                sha256=created.sha256,
+                note=created.note,
+            )
+        except OSError:
+            log.exception("could not write the vault_created audit event")
+        return {**vault_summary(vault_id), "created_version": created.version}
+
     @app.get("/v1/admin/vaults/{vault_id}")
     def admin_vault(vault_id: str, version: int | None = None) -> dict:
         """One vault: its YAML (current, or an earlier `version`), rules, and version history."""
@@ -712,6 +772,7 @@ def create_app(
             "/admin/config",
             "/admin/users",
             "/admin/vaults",
+            "/admin/vaults/new",  # before {vault_id}, which would otherwise take it
             "/admin/vaults/{vault_id}",
             "/admin/vaults/{vault_id}/edit",
         ):
