@@ -21,9 +21,9 @@ Set in the environment or in `.env` (copy `.env.example`). Run commands from the
 | `AUDIT_LOG_PATH` | `audit/audit.jsonl` | Where the audit log is appended. |
 | `MAX_UPLOAD_MB`, `MAX_DOCUMENT_CHARS` | `20`, `300000` | Upload size and extracted-text limits. |
 | `MAX_WORKERS` | `4` | Rules reviewed concurrently. |
-| `ACCESS_USER`, `ACCESS_PASSWORD` | `demo`, unset | Visitor login (HTTP Basic) for every page and API call except a minimal `/healthz`. Unset means no login. |
+| `ACCESS_USER`, `ACCESS_PASSWORD` | `demo`, unset | The initial visitor login (HTTP Basic) for every page and API call except a minimal `/healthz`. Unset means no login. Manage it afterwards on the Users page (below). |
 | `MAX_REVIEWS_PER_HOUR` | `0` | Global cap on reviews across all visitors (`429` when reached). `0` = unlimited. |
-| `ADMIN_USER`, `ADMIN_PASSWORD` | `admin`, unset | Super-admin login for `/status` and `/admin`. Unset disables the console. Environment only; never editable at runtime. |
+| `ADMIN_USER`, `ADMIN_PASSWORD` | `admin`, unset | The initial super-admin login for the console. Unset disables the console. The username and this variable are environment only; the password can be reset on the Users page. |
 | `CORS_ALLOW_ORIGINS` | empty | Comma-separated browser origins allowed to call the API (only needed when the client app is hosted elsewhere). |
 | `SENTINEL_DOMAIN` | unset | Read by `deploy/public` (Caddy), not by the app. |
 
@@ -56,7 +56,7 @@ cap, and a domain. It never prints secrets.
 | `GET /healthz` | Status, LLM host and model, whether search is configured. Never returns secrets. |
 | `GET /` | The built-in web UI, where people upload documents. |
 | `GET /app/` | The client-facing app (see [`client/`](../client/README.md)). |
-| `GET /status`, `GET /admin` | The admin console page: one shell, two views. Contains no data; see below. |
+| `GET /status`, `GET /admin`, `GET /admin/user` | The admin console page: one shell, three views (status, configuration, users). Contains no data; see below. |
 | `/v1/admin/*` | The console's API. Admin login required; see below. |
 
 ```bash
@@ -88,9 +88,9 @@ The same JSON comes from `--json` and `POST /v1/reviews`:
     perimeter), `status` (`confirmed`, `contradicted`, `unclear`, `unavailable`), `rationale`, and
     `sources[]` with `url` and `role` (`supports`, `contradicts`, `consulted`).
 
-## Admin console: `/status` and `/admin`
+## Admin console: `/status`, `/admin`, and `/admin/user`
 
-One page, two views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
+One page, three views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
 (12+ characters, different from `ACCESS_PASSWORD`); without it the pages and `/v1/admin/*`
 refuse to work.
 
@@ -101,11 +101,29 @@ model endpoint and Tavily to prove the keys work and the model id exists (a few 
 search; one live run at a time).
 
 **`/admin`** edits settings at runtime: the model endpoint, model id and its parameters, the
-Tavily key, limits, the review cap, and the visitor login. A change is validated like `.env`
+Tavily key, limits, and the review cap. A change is validated like `.env`
 (a batch with any invalid field applies nothing), takes effect immediately, is saved to
 `overrides.json` next to the audit log with owner-only permissions, and survives a restart.
-"Reset to environment value" removes an override. Not editable at runtime: file paths, CORS
-origins, and the admin credentials themselves.
+"Reset to environment value" removes an override. Not editable at runtime: file paths and CORS
+origins. Logins are managed on the Users page, not here.
+
+**`/admin/user`** lists the authorized users and resets their passwords. The admin and visitor
+logins defined by the environment (`admin` and `judge` in this deployment) always come first. An
+admin can pick a password (12+ characters, not easy to guess) or have one generated; a generated
+password is shown **once** and then wiped from the page. The old password stops working
+immediately, and an admin can reset their own (the console stays signed in).
+
+- **Where users live:** `users.json` next to the audit log, owner-only permissions, holding
+  salted scrypt **hashes only**, never plaintext.
+- **Environment vs console:** the two environment-defined users follow the environment
+  (a rotated `ACCESS_PASSWORD` takes effect on restart) until someone resets their password on
+  this page; from then on the console's password wins and the environment value is ignored for
+  that user. Removing `ACCESS_PASSWORD` from the environment removes a still-environment-defined
+  visitor and turns the visitor login off.
+- **Not offered on purpose:** creating, deleting, or disabling users. Disabling the last visitor
+  would silently turn the login off on a public site.
+- **Audited:** each reset appends a `user_password_reset` event (who reset whom, and whether it
+  was generated); the password itself is never logged.
 
 Security model:
 
