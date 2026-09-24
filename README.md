@@ -94,7 +94,7 @@ The query is rendered from the vault's template using only vault parameters and 
 ```bash
 git clone https://github.com/talacha/sentinel.git && cd sentinel
 uv sync                  # creates .venv and installs the pinned dependencies
-uv run pytest            # optional: confirm the install (376 tests, no network)
+uv run pytest            # optional: confirm the install (397 tests, no network)
 ```
 
 No uv? Plain `pip` works too (`python3 -m venv .venv && source .venv/bin/activate && pip install -e .`); see [Running locally](docs/running-locally.md#2-install-dependencies).
@@ -159,7 +159,7 @@ The full format and validation rules are in the [reference](docs/reference.md#va
 **Verified**
 
 - **Live model and search (2026-09-23):** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` through Nebius Token Factory plus live Tavily searches, using `evals/run_evals.py`: **24 of 24 verdicts as expected** across the insurance, legal, and health samples, with no evidence warnings. Token Factory accepts the JSON-schema mode and the reasoning parameter. This is a small suite of synthetic documents, a strong smoke test rather than a benchmark.
-- 376 automated tests pass with no network: ingest and quote location, the LLM client, extraction, checks, the egress guard, the verdict policy, the engine, the audit log (asserted free of document text), login, CORS, the review cap, the admin console (secrets never leave, invalid changes apply nothing, users can be added and edited without ever locking the console or the visitor login out, vault edits are validated and versioned), preflight, and the shipped vaults run through the engine.
+- 397 automated tests pass with no network: ingest and quote location, the LLM client, extraction, checks, the egress guard, the verdict policy, the engine, the audit log (asserted free of document text), login, CORS, the review cap, the admin console (secrets never leave, invalid changes apply nothing, users can be added and edited without ever locking the console or the visitor login out, vault edits are validated and versioned), preflight, and the shipped vaults run through the engine.
 - The client app and the admin console driven end to end in jsdom against a live service; the console was exercised against the real Token Factory and Tavily keys and found a wrong model id, then fixed it, with no secret ever appearing on a page. The admin console was also opened in a real Chrome (light, dark, and phone width). The client app has not been checked visually in a real browser.
 - The Docker image and the public stack (app behind Caddy with HTTPS, visitor and admin logins, security headers) run locally.
 

@@ -258,10 +258,15 @@ class UserStore:
         if not verify_password(password, stored):
             return None
         with self._lock:
+            current = self._users.get(username)
+            if current is None or current.hash != stored:
+                # The password was changed (or the user removed) while this one was being checked:
+                # a reset must end the old password at once, not one hash computation later.
+                return None
             if len(self._cache) >= _CACHE_MAX:
                 self._cache.clear()
             self._cache[cache_id] = (stored, time.monotonic() + _CACHE_TTL_SECONDS)
-            return self._users.get(username)
+            return current
 
     # -- management --------------------------------------------------------------------
 

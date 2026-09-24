@@ -104,7 +104,9 @@ leave it (a link, Back, or closing the tab).
 | **`/admin/users`** | Who can sign in: add users and edit them. |
 | **`/admin/vaults`** | The vaults: list, view the current version, edit. |
 
-The earlier URLs `/admin/user` and `/admin/vault[/...]` still work and redirect to the pages above.
+The earlier URLs `/admin/user` and `/admin/vault[/...]` still work and redirect to the pages above,
+and so does a trailing slash (`/admin/users/` goes to `/admin/users`). These redirects stay on the
+same origin, so they behave the same behind a TLS-terminating proxy such as Caddy.
 
 ### Status: `/status`
 
@@ -177,6 +179,13 @@ Security model:
 - **Brute-force lockout.** Ten wrong admin passwords in five minutes lock the admin API for the
   remainder of the window, even against the correct password. This is deliberately global and
   applies to the admin login only, so it cannot be used to lock visitors out.
+- **A locked-down page.** The console is served with a Content-Security-Policy that lets it run
+  only its own inline script and style and talk only to its own server. Injected content could
+  neither load code from elsewhere nor send data out, and the page cannot be framed.
+- **Errors never echo what you sent.** A rejected request reports where the problem is and what
+  it is, never the value, so a password or key in a bad request does not come back in the reply.
+- **A password change ends the old password at once,** including for a sign-in that was already
+  being checked when the change landed.
 - **Audited.** Each change appends a `config_change` event to the audit log with who, which
   fields, and non-secret values (for the endpoint URL, only the host).
 - **Powerful by design.** An admin can change where documents are sent, and can rewrite the

@@ -95,7 +95,7 @@ documents, but say so plainly in the video and README rather than calling it sin
 7. **Verify from your laptop.** Open `https://<your-domain>/status`, sign in as the admin, and
    click **Run live checks**. Everything should pass: the key works, the model exists, a real
    reasoning call returns JSON, Tavily answers. If the model id is wrong, fix it on the
-   **Configuration** tab (no restart needed) and run the live checks again. Then open
+   **Configuration** page, `/admin/config` (no restart needed) and run the live checks again. Then open
    `https://<your-domain>/app/`, sign in as a visitor, and run every bundled sample once.
 
 8. **Write the Devpost testing instructions:**
@@ -108,6 +108,24 @@ documents, but say so plainly in the video and README rather than calling it sin
 9. **Afterwards:** rotate the passwords (the Users page at `/admin/users` does it instantly, with no
    restart), and delete the VM when judging is over. Nebius bills while
    it exists.
+
+### Updating a running deployment
+
+Merging to `main` does **not** deploy anything: the VM keeps running whatever it last built. To
+pick up new code (a new admin page will answer 401 or 404 until you do this):
+
+```bash
+ssh <you>@<ip>
+cd ~/sentinel
+git fetch origin && git checkout main && git pull --ff-only
+cd deploy/public
+docker compose --env-file ../../.env -f docker-compose.yml up -d --build sentinel
+# only if deploy/public/Caddyfile changed (its single-file bind mount goes stale on checkout):
+docker compose --env-file ../../.env -f docker-compose.yml up -d --force-recreate caddy
+```
+
+Users, overrides, saved vault edits, and the audit log live in the `sentinel-data` volume, so they
+survive the rebuild. Check `https://<your-domain>/healthz` and `/admin` afterwards.
 
 ### Protecting your credits
 
