@@ -17,7 +17,7 @@ Set in the environment or in `.env` (copy `.env.example`). Run commands from the
 | `LLM_TIMEOUT_SECONDS` | `120` | Per-request timeout. |
 | `TAVILY_API_KEY` | unset | Enables scoped verification. Without it, rules that need a public source resolve to `revisar`. |
 | `MAX_SEARCHES_PER_REVIEW` | `5` | Hard cap on outbound searches per review. |
-| `VAULTS_DIR` | `vaults` | Where vaults are read. The server reads them once, on first use. |
+| `VAULTS_DIR` | `vaults` | Where the shipped vaults are read. They are never modified; edits made in the console are saved as versions in `vaults.d/` next to the audit log (see Vaults, below). |
 | `AUDIT_LOG_PATH` | `audit/audit.jsonl` | Where the audit log is appended. |
 | `MAX_UPLOAD_MB`, `MAX_DOCUMENT_CHARS` | `20`, `300000` | Upload size and extracted-text limits. |
 | `MAX_WORKERS` | `4` | Rules reviewed concurrently. |
@@ -56,7 +56,7 @@ cap, and a domain. It never prints secrets.
 | `GET /healthz` | Status, LLM host and model, whether search is configured. Never returns secrets. |
 | `GET /` | The built-in web UI, where people upload documents. |
 | `GET /app/` | The client-facing app (see [`client/`](../client/README.md)). |
-| `GET /status`, `GET /admin`, `GET /admin/user` | The admin console page: one shell, three views (status, configuration, users). Contains no data; see below. |
+| `GET /status`, `GET /admin`, `GET /admin/user`, `GET /admin/vaults[/<id>[/edit]]` | The admin console page: one shell, four views (status, configuration, users, vaults). Contains no data; see below. |
 | `/v1/admin/*` | The console's API. Admin login required; see below. |
 
 ```bash
@@ -88,9 +88,9 @@ The same JSON comes from `--json` and `POST /v1/reviews`:
     perimeter), `status` (`confirmed`, `contradicted`, `unclear`, `unavailable`), `rationale`, and
     `sources[]` with `url` and `role` (`supports`, `contradicts`, `consulted`).
 
-## Admin console: `/status`, `/admin`, and `/admin/user`
+## Admin console: `/status`, `/admin`, `/admin/user`, and `/admin/vaults`
 
-One page, three views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
+One page, four views, for the person running the deployment. Enable it by setting `ADMIN_PASSWORD`
 (12+ characters, different from `ACCESS_PASSWORD`); without it the pages and `/v1/admin/*`
 refuse to work.
 
@@ -125,6 +125,11 @@ immediately, and an admin can reset their own (the console stays signed in).
 - **Audited:** each reset appends a `user_password_reset` event (who reset whom, and whether it
   was generated); the password itself is never logged.
 
+**`/admin/vaults`** lists every vault with its rule count, current version, and last change.
+`/admin/vaults/<id>` shows the **current version**: its rules, the YAML, and the version history
+(any earlier version can be opened and read). Admins can edit at `/admin/vaults/<id>/edit`; see
+[Editing vaults](#editing-vaults).
+
 Security model:
 
 - **Secrets are write-only.** API keys and passwords are never returned by the API, shown on the
@@ -137,8 +142,9 @@ Security model:
   applies to the admin login only, so it cannot be used to lock visitors out.
 - **Audited.** Each change appends a `config_change` event to the audit log with who, which
   fields, and non-secret values (for the endpoint URL, only the host).
-- **Powerful by design.** An admin can change where documents are sent. Treat `ADMIN_PASSWORD`
-  like a root password, and check `/status` after any change.
+- **Powerful by design.** An admin can change where documents are sent, and can rewrite the
+  policy that reviews are judged against. Treat `ADMIN_PASSWORD` like a root password, and check
+  `/status` after any change.
 
 ## Vaults
 
@@ -205,3 +211,36 @@ Vaults are validated when they load, and a mistake names the file and field:
 
 Write rules so a `cumple` or `no_cumple` can point at a passage in the document: a verdict without
 a verifiable quote becomes `revisar`. Keep real client data out of the repository.
+
+### Editing vaults
+
+An admin edits a vault at `/admin/vaults/<id>/edit`: a YAML editor with **Validate** (checks
+without saving) and **Save as new version**, plus an optional note that is kept in the history.
+
+- **Same validation as a shipped file.** A save that fails is rejected whole, and the live vault
+  is unchanged. Errors show the line and column for YAML syntax problems, and the field for rule
+  problems. The vault's `id` cannot change, and a vault can be at most 256 KB.
+- **Versions, not overwrites.** The shipped file is version 1 and is never modified (it can be
+  mounted read-only). Each save writes the next version (2, 3, ...) to `vaults.d/<id>/` next to the
+  audit log, with owner-only permissions. Every version stays readable at
+  `/admin/vaults/<id>?version=N`. To go back, open an old version and save its text again.
+- **Applies immediately.** New reviews use the saved version at once, with no restart, through the
+  API and the CLI alike (`sentinel --vaults-dir DIR ...` reads that directory as given, without
+  edits). A review already running finishes on the version it started with.
+- **No lost updates.** The editor remembers the version it started from. If someone saved in the
+  meantime, the save is refused (`409`) and the editor keeps your text.
+- **If the shipped file changes later** (for example after a `git pull`), the edited version stays
+  in use and the page says so, so a shipped fix is never silently ignored or silently applied.
+- **Audited by hash.** Each save appends a `vault_edit` event (who, which vault and version, the
+  SHA-256 of the saved text, and the note). The vault text is not copied into the log.
+- **Keep the state directory.** It holds the edits, so it belongs in a volume that survives
+  redeploys; `deploy/public` already keeps it in the `sentinel-data` volume.
+
+The console's API, all admin-only (writes need JSON and the `X-Sentinel-Admin` header):
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /v1/admin/vaults` | Every vault: version, source (`shipped` or `edited`), last change, rule count. |
+| `GET /v1/admin/vaults/<id>[?version=N]` | The YAML, rules, and version history. |
+| `POST /v1/admin/vaults/<id>/validate` | `{"yaml": "..."}`. `200` if valid, else `422` with `errors[]`. Saves nothing. |
+| `PUT /v1/admin/vaults/<id>` | `{"yaml", "base_version", "note"}`. `200` with `saved_version`; `409` if `base_version` is stale; `413` too large; `422` invalid. |

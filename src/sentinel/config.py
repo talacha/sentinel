@@ -75,6 +75,11 @@ class Settings(BaseSettings):
         return self.llm_base_url, self.llm_model
 
     @property
+    def vaults_overlay_dir(self) -> Path:
+        """Where console edits to vaults are saved: next to the audit log, never in `vaults_dir`."""
+        return self.audit_log_path.parent / "vaults.d"
+
+    @property
     def llm_host(self) -> str | None:
         """Host the LLM client talks to (for startup logs and /healthz)."""
         return urlparse(self.llm_base_url).netloc if self.llm_base_url else None

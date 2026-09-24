@@ -65,6 +65,7 @@ GROUPS = {
     "ACCESS_PASSWORD": "Access",
     "ADMIN_PASSWORD": "Access",
     "users": "Access",
+    "vault edits": "Storage",
     "MAX_REVIEWS_PER_HOUR": "Access",
     "SENTINEL_DOMAIN": "Access",
 }

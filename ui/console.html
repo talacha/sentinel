@@ -57,6 +57,16 @@
     dialog::backdrop { background:rgb(0 0 0 / .5); }
     dialog h2 { margin:0 0 4px; font-size:1.1rem; }
     dialog label { display:grid; gap:4px; margin:12px 0; font-size:.9rem; font-weight:600; }
+    a.btn, a.btn:visited { display:inline-block; padding:8px 16px; border-radius:9px; border:1.5px solid var(--accent); background:var(--accent); color:var(--on-accent); font-weight:600; text-decoration:none; }
+    a { color:var(--accent); }
+    pre.yaml { margin:8px 0 0; padding:14px; background:var(--skip-bg); border-radius:8px; overflow:auto; max-height:560px; font:.85rem/1.5 var(--mono); white-space:pre; tab-size:2; }
+    textarea.yaml-edit { display:block; width:100%; min-height:520px; margin:6px 0 14px; padding:12px; border:1.5px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); font:.85rem/1.5 var(--mono); tab-size:2; white-space:pre; overflow:auto; resize:vertical; }
+    .errors { padding:10px 14px; margin:0 0 12px; border-radius:8px; background:var(--fail-bg); color:var(--fail); }
+    .errors ul { margin:6px 0 0; padding-left:20px; }
+    .errors.ok { background:var(--pass-bg); color:var(--pass); }
+    .notice { padding:10px 14px; margin:8px 0; border-radius:8px; background:var(--warn-bg); color:var(--warn); }
+    .lbl { display:block; font-weight:600; margin-top:8px; }
+    #edit-note { max-width:none; }
     table.users { width:100%; border-collapse:collapse; font-size:.95rem; }
     table.users th, table.users td { text-align:left; padding:10px 8px; border-top:1px solid var(--border); vertical-align:middle; }
     table.users thead th { border-top:0; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
@@ -84,6 +94,7 @@
         <button class="tab" role="tab" id="tab-status" aria-selected="true" aria-controls="panel-status">Status</button>
         <button class="tab" role="tab" id="tab-admin" aria-selected="false" aria-controls="panel-admin">Configuration</button>
         <button class="tab" role="tab" id="tab-users" aria-selected="false" aria-controls="panel-users">Users</button>
+        <button class="tab" role="tab" id="tab-vaults" aria-selected="false" aria-controls="panel-vaults">Vaults</button>
         <button id="signout" class="link" hidden>Sign out</button>
       </nav>
     </div>
@@ -123,6 +134,54 @@
           <thead><tr><th scope="col">User</th><th scope="col">Role</th><th scope="col">Password</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
           <tbody id="users-body"></tbody>
         </table>
+      </div>
+    </section>
+    <section id="panel-vaults" role="tabpanel" aria-labelledby="tab-vaults" hidden>
+      <div id="vaults-list" hidden>
+        <p class="muted">The policies (vaults) the service reviews documents against. Editing a vault saves a new version that applies to new reviews immediately; the shipped files are never modified, and every earlier version stays viewable.</p>
+        <div id="vaults-notice"></div>
+        <div class="card">
+          <table class="users">
+            <thead><tr><th scope="col">Vault</th><th scope="col">Rules</th><th scope="col">Version</th><th scope="col">Last change</th><th scope="col"><span class="sr">Actions</span></th></tr></thead>
+            <tbody id="vaults-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="vault-view" hidden>
+        <p><a href="/admin/vaults" id="view-back">&larr; All vaults</a></p>
+        <div class="card">
+          <h2 id="view-title"></h2>
+          <p class="muted" id="view-meta"></p>
+          <div id="view-notices"></div>
+          <div class="actions"><a id="view-edit" class="btn" href="#" hidden>Edit this vault</a></div>
+        </div>
+        <div class="card"><h2>Rules</h2>
+          <table class="users"><thead><tr><th scope="col">Rule</th><th scope="col">Kind</th><th scope="col">Severity</th></tr></thead><tbody id="view-rules"></tbody></table>
+        </div>
+        <div class="card"><h2>YAML <span class="muted" id="view-version"></span></h2><pre class="yaml" id="view-yaml"></pre></div>
+        <div class="card"><h2>Version history</h2>
+          <table class="users"><thead><tr><th scope="col">Version</th><th scope="col">Saved by</th><th scope="col">When</th><th scope="col">Note</th><th scope="col"><span class="sr">View</span></th></tr></thead><tbody id="view-history"></tbody></table>
+        </div>
+      </div>
+
+      <div id="vault-edit" hidden>
+        <p><a href="#" id="edit-back">&larr; Back to the vault</a></p>
+        <div class="card">
+          <h2 id="edit-title"></h2>
+          <p class="muted" id="edit-intro"></p>
+          <div id="edit-errors" class="errors" role="alert" hidden></div>
+          <label class="lbl" for="edit-yaml">Vault YAML</label>
+          <textarea id="edit-yaml" class="yaml-edit" spellcheck="false" wrap="off" autocomplete="off"></textarea>
+          <label class="lbl" for="edit-note">What changed? (optional, kept in the version history)</label>
+          <input id="edit-note" type="text" maxlength="200" autocomplete="off">
+          <div class="actions">
+            <button type="button" id="edit-validate">Validate</button>
+            <button type="button" id="edit-save" class="primary">Save as new version</button>
+            <button type="button" id="edit-cancel">Cancel</button>
+            <span id="edit-status" class="muted" role="status" aria-live="polite"></span>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -552,23 +611,244 @@ async function resetPassword(username) {
   }
 }
 
+// ------------------------------------------------------------------------------ vaults
+// Three views, chosen by the URL: /admin/vaults (list), /admin/vaults/<id> (the current version),
+// /admin/vaults/<id>/edit (editor).
+
+const vaultState = { id: null, baseVersion: null, original: "", loaded: false };
+
+function parseVaultPath(path) {
+  const m = path.match(/^\/admin\/vaults(?:\/([^/]+?)(\/edit)?)?\/?$/);
+  return m ? { id: m[1] ? decodeURIComponent(m[1]) : null, edit: Boolean(m[2]) } : null;
+}
+
+const vaultUrl = (id, suffix = "") => `/admin/vaults/${encodeURIComponent(id)}${suffix}`;
+const vaultApi = (id, suffix = "") => `/v1/admin/vaults/${encodeURIComponent(id)}${suffix}`;
+
+function editorDirty() {
+  return vaultState.loaded && !$("vault-edit").hidden && $("edit-yaml").value !== vaultState.original;
+}
+
+function navigate(path) {
+  if (editorDirty() && !confirm("You have unsaved changes to this vault. Discard them?")) return false;
+  vaultState.loaded = false;
+  history.pushState(null, "", path);
+  renderVaultRoute();
+  return true;
+}
+
+function link(text, path, attrs) {
+  const a = h("a", { href: path, ...attrs }, text);
+  a.addEventListener("click", (e) => { e.preventDefault(); navigate(path); });
+  return a;
+}
+
+function showVaultView(which) {
+  for (const id of ["vaults-list", "vault-view", "vault-edit"]) $(id).hidden = id !== which;
+}
+
+function versionBadge(v) {
+  return v.source === "edited" ? `edited, version ${v.version}` : "shipped, version 1";
+}
+
+async function loadVaultList() {
+  showVaultView("vaults-list");
+  const resp = await api("/v1/admin/vaults");
+  if (!resp.ok) throw new Stop(`Could not load the vaults (HTTP ${resp.status}).`);
+  const data = await resp.json();
+  const notice = $("vaults-notice");
+  notice.replaceChildren();
+  if (!data.editable) notice.append(h("p", { class: "notice" }, "Editing is not available on this deployment (there is no writable state directory). Vaults can be viewed only."));
+  for (const problem of data.problems) notice.append(h("p", { class: "notice" }, `Saved edits were ignored: ${problem}`));
+  const body = $("vaults-body");
+  body.replaceChildren();
+  for (const v of data.vaults) {
+    const actions = [link("View", vaultUrl(v.id))];
+    if (data.editable) actions.push(" · ", link("Edit", vaultUrl(v.id, "/edit")));
+    body.append(h("tr", {},
+      h("th", { scope: "row" }, link(v.title, vaultUrl(v.id)), h("br"), h("span", { class: "muted" }, v.id)),
+      h("td", {}, String(v.rule_count)),
+      h("td", {}, h("span", { class: `role ${v.source === "edited" ? "admin" : ""}` }, versionBadge(v))),
+      h("td", { class: "detail" }, v.source === "edited" ? `${v.updated_by || "?"}, ${fmtDate(v.updated_at)}` : "not edited"),
+      h("td", {}, actions)));
+  }
+}
+
+async function fetchVault(id, version) {
+  const resp = await api(vaultApi(id) + (version ? `?version=${version}` : ""));
+  if (resp.status === 404) throw new Stop(`There is no such vault or version: ${id}${version ? ` v${version}` : ""}.`);
+  if (!resp.ok) throw new Stop(`Could not load the vault (HTTP ${resp.status}).`);
+  return resp.json();
+}
+
+async function loadVaultView(id, version) {
+  showVaultView("vault-view");
+  const d = await fetchVault(id, version);
+  $("view-title").replaceChildren(d.title, " ", h("code", {}, d.id));
+  $("view-meta").textContent = d.description || "";
+  const notices = $("view-notices");
+  notices.replaceChildren(
+    h("p", {}, h("strong", {}, `Current version: ${versionBadge(d)}`),
+      d.source === "edited" ? ` (saved by ${d.updated_by || "?"} on ${fmtDate(d.updated_at)}${d.note ? `: ${d.note}` : ""})` : ""));
+  if (!d.is_current) {
+    const back = link("Show the current version", vaultUrl(d.id));
+    notices.append(h("p", { class: "notice" }, `You are viewing an earlier version (${d.viewing_version}), not the one in use. `, back));
+  }
+  if (d.shipped_changed) notices.append(h("p", { class: "notice" }, "The shipped file for this vault has changed since it was edited here. The edited version is the one in use; the shipped change is ignored."));
+  const edit = $("view-edit");
+  edit.hidden = !(d.editable && d.is_current);
+  edit.setAttribute("href", vaultUrl(d.id, "/edit"));
+  $("view-back").onclick = (e) => { e.preventDefault(); navigate("/admin/vaults"); };
+  edit.onclick = (e) => { e.preventDefault(); navigate(vaultUrl(d.id, "/edit")); };
+  $("view-rules").replaceChildren(...d.rules.map((r) => h("tr", {},
+    h("th", { scope: "row" }, r.title, h("br"), h("span", { class: "muted" }, r.id)),
+    h("td", {}, r.kind + (r.external_check ? " + public check" : "")),
+    h("td", {}, r.severity))));
+  $("view-version").textContent = `(version ${d.viewing_version})`;
+  $("view-yaml").textContent = d.yaml;
+  $("view-history").replaceChildren(...d.history.map((v) => h("tr", {},
+    h("th", { scope: "row" }, `v${v.version}`, v.version === d.version ? " (current)" : ""),
+    h("td", {}, v.saved_by || "shipped file"),
+    h("td", { class: "detail" }, v.saved_at ? fmtDate(v.saved_at) : ""),
+    h("td", { class: "detail" }, v.note || ""),
+    h("td", {}, v.version === d.viewing_version ? "viewing" : link("View", vaultUrl(d.id) + `?version=${v.version}`)))));
+}
+
+function showEditorErrors(errors, ok) {
+  const box = $("edit-errors");
+  box.replaceChildren();
+  box.classList.toggle("ok", Boolean(ok));
+  if (typeof errors === "string") box.append(errors);
+  else {
+    box.append(ok ? "" : "The vault was not accepted:");
+    box.append(h("ul", {}, errors.map((e) => h("li", {},
+      e.line ? `line ${e.line}${e.column ? `, column ${e.column}` : ""}: ` : e.path ? `${e.path}: ` : "", e.message))));
+  }
+  box.hidden = false;
+}
+
+async function loadVaultEdit(id) {
+  showVaultView("vault-edit");
+  const d = await fetchVault(id);
+  if (!d.editable) throw new Stop("Editing is not available on this deployment.");
+  vaultState.id = d.id;
+  vaultState.baseVersion = d.version;
+  vaultState.original = d.yaml;
+  vaultState.loaded = true;
+  $("edit-title").textContent = `Edit ${d.title} (${d.id})`;
+  $("edit-intro").textContent = `You are editing version ${d.version}. Saving creates version ${d.version + 1}, which applies to new reviews immediately; the current version stays in the history.`;
+  $("edit-yaml").value = d.yaml;
+  $("edit-note").value = "";
+  $("edit-errors").hidden = true;
+  $("edit-status").textContent = "";
+  $("edit-back").onclick = (e) => { e.preventDefault(); navigate(vaultUrl(d.id)); };
+}
+
+async function renderVaultRoute() {
+  banner("");
+  const route = parseVaultPath(location.pathname) || { id: null, edit: false };
+  const version = Number(new URLSearchParams(location.search).get("version")) || null;
+  try {
+    if (!route.id) await loadVaultList();
+    else if (route.edit) await loadVaultEdit(route.id);
+    else await loadVaultView(route.id, version);
+  } catch (err) {
+    if (err instanceof Stop) banner(err.message);
+    else throw err;
+  }
+}
+
+async function validateVault() {
+  $("edit-status").textContent = "Checking…";
+  const resp = await api(vaultApi(vaultState.id, "/validate"), { method: "POST", json: { yaml: $("edit-yaml").value } });
+  const data = await resp.json().catch(() => ({}));
+  $("edit-status").textContent = "";
+  if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return false; }
+  if (!resp.ok) { showEditorErrors(`Validation failed (HTTP ${resp.status}).`); return false; }
+  showEditorErrors(`Valid: "${data.title}" with ${data.rule_count} rules. Nothing has been saved yet.`, true);
+  return true;
+}
+
+async function saveVault() {
+  $("edit-status").textContent = "Saving…";
+  const resp = await api(vaultApi(vaultState.id), {
+    method: "PUT",
+    json: { yaml: $("edit-yaml").value, base_version: vaultState.baseVersion, note: $("edit-note").value },
+  });
+  const data = await resp.json().catch(() => ({}));
+  $("edit-status").textContent = "";
+  if (resp.status === 422 && data.detail?.errors) { showEditorErrors(data.detail.errors); return; }
+  if (resp.status === 413) { showEditorErrors("The vault is too large to save."); return; }
+  if (resp.status === 409) {
+    showEditorErrors(`Not saved: version ${data.detail.current} was saved while you were editing. Copy your changes somewhere safe, then reopen the editor to start from the latest version.`);
+    return;
+  }
+  if (resp.status === 501) { showEditorErrors("Editing is not available on this deployment."); return; }
+  if (!resp.ok) { showEditorErrors(`Save failed (HTTP ${resp.status}).`); return; }
+  vaultState.loaded = false; // saved: nothing left to discard
+  history.pushState(null, "", vaultUrl(vaultState.id));
+  await renderVaultRoute();
+  banner(`Saved as version ${data.saved_version}. It applies to new reviews immediately.`, "ok");
+}
+
+window.addEventListener("beforeunload", (e) => { if (editorDirty()) { e.preventDefault(); e.returnValue = ""; } });
+
+function tabForPath(path) {
+  const clean = path.replace(/\/+$/, "");
+  if (clean === "/admin/user") return "users";
+  if (clean === "/admin") return "admin";
+  if (clean === "/admin/vaults" || clean.startsWith("/admin/vaults/")) return "vaults";
+  return "status";
+}
+
 function show(tab, autoload = true) {
-  const paths = { status: "/status", admin: "/admin", users: "/admin/user" };
+  const paths = { status: "/status", admin: "/admin", users: "/admin/user", vaults: "/admin/vaults" };
   for (const name of Object.keys(paths)) {
     $(`panel-${name}`).hidden = name !== tab;
     $(`tab-${name}`).setAttribute("aria-selected", String(name === tab));
   }
-  try { history.replaceState(null, "", paths[tab]); } catch { /* not critical */ }
+  // Keep a deeper vault URL (view or edit) when the page was opened on one.
+  if (!(tab === "vaults" && parseVaultPath(location.pathname))) {
+    try { history.replaceState(null, "", paths[tab]); } catch { /* not critical */ }
+  }
   banner("");
   if (!autoload) return;
   if (tab === "status") loadStatus(false);
   else if (tab === "admin") loadConfig();
-  else loadUsers();
+  else if (tab === "users") loadUsers();
+  else renderVaultRoute();
 }
 
-$("tab-status").addEventListener("click", () => show("status"));
-$("tab-admin").addEventListener("click", () => show("admin"));
-$("tab-users").addEventListener("click", () => show("users"));
+// Leaving the editor (another tab, browser Back) asks first when there are unsaved changes.
+function confirmLeave() {
+  if (!editorDirty()) return true;
+  if (!confirm("You have unsaved changes to this vault. Discard them?")) return false;
+  vaultState.loaded = false;
+  return true;
+}
+
+window.addEventListener("popstate", () => {
+  if (!confirmLeave()) {
+    // The URL already changed; put the editor's URL back so Back does not silently discard.
+    history.pushState(null, "", vaultUrl(vaultState.id, "/edit"));
+    return;
+  }
+  show(tabForPath(location.pathname));
+});
+
+function openTab(tab) {
+  if (!confirmLeave()) return;
+  if (tab === "vaults") { try { history.replaceState(null, "", "/admin/vaults"); } catch { /* not critical */ } }
+  show(tab);
+}
+
+$("tab-status").addEventListener("click", () => openTab("status"));
+$("tab-admin").addEventListener("click", () => openTab("admin"));
+$("tab-users").addEventListener("click", () => openTab("users"));
+$("tab-vaults").addEventListener("click", () => openTab("vaults"));
+$("edit-validate").addEventListener("click", () => validateVault());
+$("edit-save").addEventListener("click", () => saveVault());
+$("edit-cancel").addEventListener("click", () => navigate(vaultUrl(vaultState.id)));
 $("refresh").addEventListener("click", () => loadStatus(false));
 $("live").addEventListener("click", () => loadStatus(true));
 $("save").addEventListener("click", () => saveConfig());
@@ -576,8 +856,7 @@ $("save").addEventListener("click", () => saveConfig());
 $("verify").addEventListener("click", () => { show("status", false); loadStatus(true); });
 $("signout").addEventListener("click", () => { auth.user = auth.pass = null; location.reload(); });
 
-const startPath = location.pathname.replace(/\/+$/, "");
-show(startPath === "/admin/user" ? "users" : startPath === "/admin" ? "admin" : "status");
+show(tabForPath(location.pathname));
   </script>
 </body>
 </html>
