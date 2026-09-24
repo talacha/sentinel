@@ -4,6 +4,9 @@ Self-hosted compliance checker: document + vault (YAML rules) in, rule-by-rule v
 (`cumple` / `no_cumple` / `revisar`) with cited evidence out. See `README.md` for the product,
 architecture, and verification status.
 
+**Resuming work:** read `docs/roadmap.md` (state, next steps, deadline) and `docs/admin-rebuild.md`
+(the planned console rebuild, in milestones) before starting. Start with task A0.1.
+
 ## Commands
 
 ```bash
