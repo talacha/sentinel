@@ -135,6 +135,7 @@ docker compose up --build       # uses the same .env; app only, the model stays 
 - **[Running locally](docs/running-locally.md)**: install, the no-GPU check, model backends (SSH tunnel to your Nebius GPU, Token Factory, local vLLM), Docker details, troubleshooting.
 - **[Deploying on Nebius](deploy/README.md)**: a GPU VM step by step (recommended), a Serverless AI endpoint, or a Token Factory dedicated endpoint; security checklist; and a [demo checklist](deploy/README.md#7-demo-checklist) (where to demo, in what order, and a three-minute flow).
 - **[Reference](docs/reference.md)**: all settings, CLI, API and report format, the admin console, and the vault format.
+- **[Roadmap](docs/roadmap.md)**: what to do next and how to resume: the admin experience rebuild in milestones ([plan and tasks](docs/admin-rebuild.md)), follow-ups, and the submission checklist.
 - **[Hackathon runbook](docs/hackathon.md)**: the track, the submission requirements and where we stand, and how to go live on Nebius with HTTPS and a login.
 
 ## Vaults
