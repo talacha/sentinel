@@ -187,7 +187,7 @@ Development: `uv run pytest` and `uv run ruff check .`. Design invariants are in
 
 ## License
 
-[MIT](LICENSE), Copyright (c) 2026 Sentinel PLD.
+[MIT](LICENSE), Copyright (c) 2026 Roberto Montero and César Rodríguez.
 
 ## Built with
 
