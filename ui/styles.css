@@ -127,7 +127,7 @@ code { font-family: var(--mono); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  * { transition: none !important; animation: none !important; }
 }
 
 /* --- skip link ------------------------------------------------------------ */
@@ -181,3 +181,24 @@ h1 { display: flex; align-items: center; gap: 9px; }
 @media (max-width: 520px) {
   .sample-list { grid-template-columns: 1fr; }
 }
+
+/* --- pending review ------------------------------------------------------- */
+/* The engine checks rules in parallel, so there is no truthful per-rule order to show:
+   every rule is genuinely outstanding until the one response arrives. */
+.card.pending { border-left-color: var(--border); }
+.card.pending h3 { color: var(--muted); }
+.badge.pending { color: var(--muted); background: var(--quote-bg); }
+.skeleton { display: grid; gap: 7px; margin-top: 12px; }
+.skeleton span { height: 9px; border-radius: 4px; background: var(--quote-bg); display: block; }
+.skeleton span:nth-child(2) { width: 82%; }
+.skeleton span:nth-child(3) { width: 54%; }
+.card.pending .skeleton span { animation: pulse 1.4s ease-in-out infinite; }
+.card.pending .skeleton span:nth-child(2) { animation-delay: .12s; }
+.card.pending .skeleton span:nth-child(3) { animation-delay: .24s; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+.elapsed { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* --- tabular figures ------------------------------------------------------ */
+/* Digits in evidence, facts and the summary must not shift width as values change. */
+.summary, table.facts td, .meta, .rule-id { font-variant-numeric: tabular-nums; }

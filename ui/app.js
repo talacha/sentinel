@@ -272,27 +272,75 @@ function renderReport(report) {
   $("summary").replaceChildren(...Object.entries(report.summary).map(([verdict, count]) =>
     h("li", {}, h("span", { class: `badge ${verdict}` }, `${VERDICTS[verdict].symbol} ${verdict}: ${count}`))));
   $("cards").replaceChildren(...report.results.map(renderCard));
+  revealResults();
+}
+
+// Rules are checked in parallel, so no rule is "next" and none can be reported as done early.
+// What is true during the wait: which rules are outstanding, and how long it has been.
+function revealResults() {
   $("results").hidden = false;
-  $("results").scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  const motion = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  $("results").scrollIntoView({ behavior: motion });
+}
+
+function pendingCard(rule) {
+  return h("article", { class: "card pending" },
+    h("div", { class: "card-head" },
+      h("div", {},
+        h("h3", {}, rule.title),
+        h("span", { class: "rule-id" }, `${rule.id} · ${rule.severity} severity`)),
+      h("span", { class: "badge pending" }, "… checking")),
+    h("div", { class: "skeleton", "aria-hidden": "true" }, h("span", {}), h("span", {}), h("span", {})));
+}
+
+function renderPending(file) {
+  const vault = vaults.find((v) => v.id === $("vault").value);
+  const rules = vault ? vault.rules : [];
+  $("results-meta").textContent = `${file.name} · ${vault ? vault.title : ""}`;
+  $("summary").replaceChildren(
+    h("li", {}, h("span", { class: "badge pending" },
+      rules.length === 1 ? "checking 1 rule" : `checking ${rules.length} rules`)),
+    h("li", { class: "elapsed", id: "elapsed", "aria-hidden": "true" }, "0s"));
+  $("cards").replaceChildren(...rules.map(pendingCard));
+  revealResults();
+  return rules.length;
+}
+
+function startClock() {
+  const started = Date.now();
+  return setInterval(() => {
+    const node = $("elapsed");
+    if (!node) return;
+    const total = Math.floor((Date.now() - started) / 1000);
+    node.textContent = total < 60
+      ? `${total}s`
+      : `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, "0")}s`;
+  }, 1000);
 }
 
 async function submit(event) {
   event.preventDefault();
   showError("");
-  $("results").hidden = true;
+  const file = $("file").files[0];
   const body = new FormData();
   body.append("vault_id", $("vault").value);
-  body.append("file", $("file").files[0]);
+  body.append("file", file);
   $("run").disabled = true;
-  $("progress").textContent = "Reviewing… this can take a minute on a large document.";
+  const count = renderPending(file);
+  // Set once: this is an aria-live region, so a per-second update would talk over the user.
+  $("progress").textContent =
+    `Checking ${count} rule${count === 1 ? "" : "s"}. This can take a minute on a large document.`;
+  const clock = startClock();
   try {
     const resp = await fetch("/v1/reviews", { method: "POST", body });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(payload.detail || `${resp.status} ${resp.statusText}`);
     renderReport(payload);
   } catch (err) {
+    $("results").hidden = true;
     showError(err.message);
   } finally {
+    clearInterval(clock);
     $("progress").textContent = "";
     updateRunState();
   }
