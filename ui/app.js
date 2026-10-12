@@ -3,9 +3,9 @@
 // All server data is rendered with textContent (never innerHTML).
 
 const VERDICTS = {
-  cumple: { symbol: "✓", gloss: "passes" },
-  no_cumple: { symbol: "✕", gloss: "fails" },
-  revisar: { symbol: "!", gloss: "needs human review" },
+  cumple: { icon: "m5 12.5 4.5 4.5L19 7.5", gloss: "passes" },
+  no_cumple: { icon: "M6.5 6.5l11 11|M17.5 6.5l-11 11", gloss: "fails" },
+  revisar: { icon: "M12 7v5.5|M12 16.2h.01|M12 3.2 2.6 19.4h18.8Z", gloss: "needs human review" },
 };
 
 // A report is read to find the exceptions, so the screen leads with them. The downloaded
@@ -231,7 +231,8 @@ function setFile(file, sampleId = null) {
 
 function verdictBadge(verdict) {
   const v = VERDICTS[verdict];
-  return h("span", { class: `badge ${verdict}` }, `${v.symbol} ${verdict}`, h("span", { class: "role" }, ` ${v.gloss}`));
+  return h("span", { class: `badge ${verdict}` },
+    svg(v.icon), verdict, h("span", { class: "role" }, ` ${v.gloss}`));
 }
 
 function renderCard(result) {
@@ -308,7 +309,8 @@ function renderReport(report) {
     ? `${open} of ${report.results.length} rules need a person. Listed first.`
     : "Every rule passed, each with cited evidence.";
   $("summary").replaceChildren(...Object.entries(report.summary).map(([verdict, count]) =>
-    h("li", {}, h("span", { class: `badge ${verdict}` }, `${VERDICTS[verdict].symbol} ${verdict}: ${count}`))));
+    h("li", {}, h("span", { class: `badge ${verdict}` },
+      svg(VERDICTS[verdict].icon), `${verdict}: ${count}`))));
   $("cards").replaceChildren(...ordered.map(renderCard));
   revealResults();
 }
