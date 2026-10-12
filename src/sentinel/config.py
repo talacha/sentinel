@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     # App.
     vaults_dir: Path = Path("vaults")
+    # Synthetic documents offered in the UI so a visitor can review one without a file.
+    samples_dir: Path = Path("samples")
     audit_log_path: Path = Path("audit/audit.jsonl")
     max_upload_mb: int = Field(default=20, ge=1)
     max_workers: int = Field(default=4, ge=1)
