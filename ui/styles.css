@@ -13,6 +13,8 @@
   --review: #8a5a00;
   --review-bg: #fdf1d6;
   --quote-bg: #f1f3f6;
+  --control-border: #9099a8;
+  --sunken: #eef0f4;
   --radius: 10px;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -33,6 +35,8 @@
     --review: #f2c15c;
     --review-bg: #2e2410;
     --quote-bg: #1e222a;
+    --control-border: #6b7384;
+    --sunken: #12151b;
   }
 }
 
@@ -62,13 +66,13 @@ main { padding-top: 24px; padding-bottom: 24px; }
 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: grid; gap: 20px; }
 .field label:first-child { display: block; font-weight: 600; margin-bottom: 6px; }
-select { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+select { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--control-border); border-radius: 8px; }
 .hint { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; }
 details { margin-top: 8px; font-size: 0.9rem; }
 summary { cursor: pointer; color: var(--muted); }
 details ul { margin: 8px 0 0; padding-left: 20px; }
 
-.drop { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; min-height: 92px; padding: 16px; border: 2px dashed var(--border); border-radius: 8px; color: var(--muted); cursor: pointer; background: var(--bg); transition: border-color .15s, background-color .15s; }
+.drop { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; min-height: 92px; padding: 16px; border: 2px dashed var(--control-border); border-radius: 8px; color: var(--muted); cursor: pointer; background: var(--bg); transition: border-color .15s, background-color .15s; }
 .drop:hover, .drop.over, .drop:focus-within { border-color: var(--accent); }
 .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .drop.has-file { color: var(--text); border-style: solid; }
@@ -85,7 +89,7 @@ button:focus-visible, select:focus-visible, .drop:focus-within { outline: 3px so
 #results { margin-top: 28px; }
 .results-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 h2 { margin: 0; font-size: 1.15rem; }
-.meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 12px; word-break: break-all; }
+.meta { color: var(--muted); font-size: 0.85rem; margin: 4px 0 12px; overflow-wrap: anywhere; }
 
 .summary { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 16px; }
 
@@ -124,4 +128,56 @@ code { font-family: var(--mono); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
+}
+
+/* --- skip link ------------------------------------------------------------ */
+.skip { position: absolute; left: -9999px; top: 0; z-index: 10; padding: 10px 14px; background: var(--surface); color: var(--accent); border: 1px solid var(--accent); border-radius: 0 0 8px 0; }
+.skip:focus { left: 0; }
+
+/* --- header --------------------------------------------------------------- */
+.top-inner { display: block; }
+h1 { display: flex; align-items: center; gap: 9px; }
+.logo { width: 22px; height: 22px; color: var(--accent); flex: none; }
+
+/* --- data perimeter ------------------------------------------------------- */
+.perimeter { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin-bottom: 20px; border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); background: var(--surface); }
+.perimeter:empty { display: none; }
+.perimeter svg { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.perimeter .headline { font-weight: 650; margin: 0; }
+.perimeter .detail { margin: 3px 0 0; color: var(--muted); font-size: 0.9rem; }
+.perimeter .detail + .detail { margin-top: 5px; }
+.perimeter code { font-size: 0.85em; background: var(--quote-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.perimeter.dedicated { border-left-color: var(--pass); }
+.perimeter.dedicated svg, .perimeter.dedicated .headline { color: var(--pass); }
+.perimeter.shared, .perimeter.unknown { border-left-color: var(--review); }
+.perimeter.shared svg, .perimeter.shared .headline,
+.perimeter.unknown svg, .perimeter.unknown .headline { color: var(--review); }
+.perimeter.none { border-left-color: var(--muted); }
+.perimeter.none svg, .perimeter.none .headline { color: var(--muted); }
+
+/* --- vault rules ---------------------------------------------------------- */
+.rules { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 5px; }
+.rules li { display: flex; gap: 9px; align-items: baseline; }
+.sev { font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; padding: 2px 7px; border-radius: 4px; flex: none; min-width: 5.5em; text-align: center; }
+.sev.high { color: var(--fail); background: var(--fail-bg); }
+.sev.medium { color: var(--review); background: var(--review-bg); }
+.sev.low { color: var(--muted); background: var(--quote-bg); }
+
+/* --- drop zone ------------------------------------------------------------ */
+.drop { flex-direction: column; gap: 8px; }
+.drop-icon { width: 24px; height: 24px; opacity: .75; }
+
+/* --- bundled samples ------------------------------------------------------ */
+.samples { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.samples-intro { margin: 0 0 9px; font-size: 0.9rem; color: var(--muted); }
+.sample-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); }
+.sample { width: 100%; height: 100%; text-align: left; font: inherit; font-weight: 400; padding: 11px 13px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--sunken); color: var(--text); cursor: pointer; display: grid; gap: 3px; transition: border-color .15s, background-color .15s; }
+.sample:hover { border-color: var(--accent); background: var(--surface); }
+.sample[aria-pressed="true"] { border-color: var(--accent); border-width: 2px; padding: 10px 12px; background: var(--surface); }
+.sample .sample-label { font-weight: 600; }
+.sample .sample-vault { font-size: 0.75rem; color: var(--muted); font-family: var(--mono); }
+.sample .sample-note { font-size: 0.85rem; color: var(--muted); }
+
+@media (max-width: 520px) {
+  .sample-list { grid-template-columns: 1fr; }
 }

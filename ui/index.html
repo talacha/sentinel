@@ -8,34 +8,53 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <a class="skip" href="#main">Skip to the review form</a>
+
   <header class="top">
     <div class="wrap top-inner">
-      <div>
-        <h1>Sentinel Core</h1>
-        <p class="tagline">Rule-by-rule compliance review with cited evidence. Your documents stay on compute you control.</p>
-      </div>
-      <ul class="status" id="status" aria-label="Deployment status"></ul>
+      <h1>
+        <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z"></path>
+          <path d="m9 11.8 2.1 2.2L15.2 10"></path>
+        </svg>
+        Sentinel Core
+      </h1>
+      <p class="tagline">Rule-by-rule compliance review with cited evidence.</p>
     </div>
   </header>
 
-  <main class="wrap">
+  <main class="wrap" id="main">
+    <section class="perimeter" id="perimeter" aria-label="Data perimeter"></section>
+
     <form id="review-form" class="panel" autocomplete="off">
       <div class="field">
         <label for="vault">1. Vault (reference policy)</label>
         <select id="vault" required></select>
         <p class="hint" id="vault-desc"></p>
         <details id="vault-rules" hidden>
-          <summary>Rules in this vault</summary>
-          <ul id="vault-rules-list"></ul>
+          <summary><span id="vault-rules-summary">Rules in this vault</span></summary>
+          <ul id="vault-rules-list" class="rules"></ul>
         </details>
       </div>
 
       <div class="field">
-        <label for="file">2. Document (PDF or text)</label>
+        <label for="file">2. Document</label>
         <label class="drop" id="drop" for="file">
           <input id="file" type="file" accept=".pdf,.txt,.text,.md,application/pdf,text/plain" required>
+          <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 2.5H7a1.5 1.5 0 0 0-1.5 1.5v16A1.5 1.5 0 0 0 7 21.5h10a1.5 1.5 0 0 0 1.5-1.5V7Z"></path>
+            <path d="M14 2.5V7h4.5M8.5 13h7M8.5 17h4.5"></path>
+          </svg>
           <span id="drop-text">Drop a file here or click to choose</span>
         </label>
+        <p class="hint" id="file-limits"></p>
+
+        <div class="samples" id="samples" hidden>
+          <p class="samples-intro" id="samples-intro">No document at hand? Review a synthetic one:</p>
+          <ul class="sample-list" id="sample-list"></ul>
+        </div>
       </div>
 
       <div class="actions">

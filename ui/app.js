@@ -8,6 +8,12 @@ const VERDICTS = {
   revisar: { symbol: "!", gloss: "needs human review" },
 };
 
+const SHIELD = {
+  dedicated: "M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z|m9 11.8 2.1 2.2L15.2 10",
+  warn: "M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z|M12 8.2v4.1|M12 15.6h.01",
+  none: "M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z|M9.2 9.2h5.6",
+};
+
 const $ = (id) => document.getElementById(id);
 
 function h(tag, attrs, ...children) {
@@ -23,6 +29,23 @@ function h(tag, attrs, ...children) {
   return node;
 }
 
+function svg(paths) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  node.setAttribute("viewBox", "0 0 24 24");
+  node.setAttribute("fill", "none");
+  node.setAttribute("stroke", "currentColor");
+  node.setAttribute("stroke-width", "1.5");
+  node.setAttribute("stroke-linecap", "round");
+  node.setAttribute("stroke-linejoin", "round");
+  node.setAttribute("aria-hidden", "true");
+  for (const d of paths.split("|")) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    node.append(path);
+  }
+  return node;
+}
+
 function safeHref(url) {
   try {
     const u = new URL(url);
@@ -33,22 +56,62 @@ function safeHref(url) {
 }
 
 let vaults = [];
+let samples = [];
 let lastReport = null;
 
+// What the operator is told about where document text goes. The server classifies the endpoint
+// (Settings.llm_perimeter); the UI only renders that verdict, and never softens "unknown".
+function perimeterCopy(health) {
+  const host = health.llm_host || "the configured endpoint";
+  const verification = health.search_configured
+    ? "Scoped verification is on: only a templated query from the vault leaves, never the document."
+    : "Scoped verification is off: rules needing a public source resolve to revisar.";
+  if (!health.llm_configured) {
+    return { kind: "none", icon: SHIELD.none, headline: "No model endpoint configured",
+      detail: "Set LLM_BASE_URL and LLM_MODEL before running a review.", verification: null };
+  }
+  if (health.llm_perimeter === "dedicated") {
+    return { kind: "dedicated", icon: SHIELD.dedicated, headline: "Dedicated perimeter",
+      detail: ["This document is sent only to ", host, " — an address that is not reachable from the public internet. Nothing else leaves."],
+      verification };
+  }
+  if (health.llm_perimeter === "shared") {
+    return { kind: "shared", icon: SHIELD.warn, headline: "Shared endpoint",
+      detail: ["Document text is sent to ", host, " — a multi-tenant service. Use synthetic documents only, never client data."],
+      verification };
+  }
+  return { kind: "unknown", icon: SHIELD.warn, headline: "Endpoint not verified",
+    detail: ["Sentinel cannot confirm that ", host, " is compute you control. Verify it before sending client data."],
+    verification };
+}
+
+function renderPerimeter(copy) {
+  const box = $("perimeter");
+  box.className = `perimeter ${copy.kind}`;
+  const detail = h("p", { class: "detail" });
+  if (Array.isArray(copy.detail)) {
+    const [before, host, after] = copy.detail.length === 3 ? copy.detail : ["", copy.detail[0], copy.detail[1]];
+    detail.append(before, h("code", {}, host), after);
+  } else {
+    detail.append(copy.detail);
+  }
+  box.replaceChildren(
+    svg(copy.icon),
+    h("div", {},
+      h("p", { class: "headline" }, copy.headline),
+      detail,
+      copy.verification ? h("p", { class: "detail" }, copy.verification) : null));
+}
+
 async function loadStatus() {
-  const list = $("status");
   try {
     const health = await (await fetch("/healthz")).json();
-    const pill = (on, text) => h("li", {}, h("span", { class: "dot " + (on ? "on" : "off") }), text);
-    list.replaceChildren(
-      pill(health.llm_configured, health.llm_configured
-        ? `Model: ${health.llm_model} @ ${health.llm_host}`
-        : "Model: not configured"),
-      pill(health.search_configured, health.search_configured
-        ? "Scoped verification: on" : "Scoped verification: off"),
-    );
+    renderPerimeter(perimeterCopy(health));
+    $("file-limits").textContent =
+      `PDF or plain text, up to ${health.max_upload_mb} MB. Scanned PDFs are not read: there is no OCR.`;
   } catch {
-    list.replaceChildren(h("li", {}, "Status unavailable"));
+    renderPerimeter({ kind: "none", icon: SHIELD.none, headline: "Status unavailable",
+      detail: "Could not reach the server to report where documents are sent.", verification: null });
   }
 }
 
@@ -71,8 +134,64 @@ function renderVault() {
   const vault = vaults.find((v) => v.id === $("vault").value);
   $("vault-desc").textContent = vault ? vault.description : "";
   const list = $("vault-rules-list");
-  list.replaceChildren(...(vault ? vault.rules.map((r) => h("li", {}, r.title)) : []));
+  const rules = vault ? vault.rules : [];
+  list.replaceChildren(...rules.map((r) =>
+    h("li", {}, h("span", { class: `sev ${r.severity}` }, r.severity), h("span", {}, r.title))));
+  $("vault-rules-summary").textContent =
+    rules.length === 1 ? "1 rule in this vault" : `${rules.length} rules in this vault`;
   $("vault-rules").hidden = !vault;
+  renderSamples();
+}
+
+async function loadSamples() {
+  try {
+    const resp = await fetch("/v1/samples");
+    samples = resp.ok ? await resp.json() : [];
+  } catch {
+    samples = [];
+  }
+  renderSamples();
+}
+
+// Picking a sample goes through the file input, so the review runs on exactly the path an
+// uploaded file takes. Nothing here is a shortcut around the engine.
+function chooseSample(sample) {
+  const file = new File([sample.text], sample.filename, { type: "text/plain" });
+  const bag = new DataTransfer();
+  bag.items.add(file);
+  $("file").files = bag.files;
+  if ($("vault").value !== sample.vault_id) {
+    $("vault").value = sample.vault_id;
+    renderVault();
+  }
+  setFile(file, sample.id);
+  for (const button of $("sample-list").querySelectorAll(".sample")) {
+    button.setAttribute("aria-pressed", String(button.dataset.id === sample.id));
+  }
+}
+
+function renderSamples() {
+  const box = $("samples");
+  box.hidden = samples.length === 0;
+  if (!samples.length) return;
+  const forVault = samples.filter((s) => s.vault_id === $("vault").value);
+  const shown = forVault.length ? forVault : samples;
+  $("samples-intro").textContent = forVault.length
+    ? "No document at hand? Review a synthetic one for this vault:"
+    : "No document at hand? Review a synthetic one:";
+  $("sample-list").replaceChildren(...shown.map((sample) => {
+    const button = h("button", {
+      type: "button", class: "sample", "aria-pressed": String(chosenSample === sample.id),
+      // The label and note render as separate blocks, which screen readers may run together.
+      "aria-label": `${sample.label}. ${sample.note}`,
+    },
+      h("span", { class: "sample-label" }, sample.label),
+      forVault.length ? null : h("span", { class: "sample-vault" }, sample.vault_id),
+      h("span", { class: "sample-note" }, sample.note));
+    button.dataset.id = sample.id;
+    button.addEventListener("click", () => chooseSample(sample));
+    return h("li", {}, button);
+  }));
 }
 
 function updateRunState() {
@@ -85,9 +204,17 @@ function showError(message) {
   box.hidden = !message;
 }
 
-function setFile(file) {
+let chosenSample = null;
+
+function setFile(file, sampleId = null) {
+  chosenSample = sampleId;
   $("drop-text").textContent = file ? `${file.name} (${Math.max(1, Math.round(file.size / 1024))} KB)` : "Drop a file here or click to choose";
   $("drop").classList.toggle("has-file", Boolean(file));
+  if (!sampleId) {
+    for (const button of $("sample-list").querySelectorAll(".sample")) {
+      button.setAttribute("aria-pressed", "false");
+    }
+  }
   updateRunState();
 }
 
@@ -195,3 +322,4 @@ drop.addEventListener("drop", (e) => {
 
 loadStatus();
 loadVaults();
+loadSamples();
