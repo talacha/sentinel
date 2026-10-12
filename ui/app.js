@@ -8,6 +8,17 @@ const VERDICTS = {
   revisar: { symbol: "!", gloss: "needs human review" },
 };
 
+// A report is read to find the exceptions, so the screen leads with them. The downloaded
+// JSON keeps the vault's own rule order, which is the stable one for a record.
+const VERDICT_RANK = { no_cumple: 0, revisar: 1, cumple: 2 };
+const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
+
+function triageOrder(results) {
+  return [...results].sort((a, b) =>
+    (VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict]) ||
+    (SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]));
+}
+
 const SHIELD = {
   dedicated: "M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z|m9 11.8 2.1 2.2L15.2 10",
   warn: "M12 2.5 4.5 5.5v6c0 4.5 3.1 8.6 7.5 10 4.4-1.4 7.5-5.5 7.5-10v-6Z|M12 8.2v4.1|M12 15.6h.01",
@@ -226,7 +237,11 @@ function verdictBadge(verdict) {
 function renderCard(result) {
   const card = h("article", { class: `card ${result.verdict}` },
     h("div", { class: "card-head" },
-      h("div", {}, h("h3", {}, result.title), h("span", { class: "rule-id" }, `${result.rule_id} · ${result.severity} severity`)),
+      h("div", {},
+        h("h3", {}, result.title),
+        h("p", { class: "rule-id" },
+          h("span", { class: `sev ${result.severity}` }, result.severity),
+          h("span", {}, result.rule_id))),
       verdictBadge(result.verdict)),
     h("p", { class: "rationale" }, result.rationale));
 
@@ -266,12 +281,35 @@ function factRow(fact) {
     h("td", {}, fact.found ? `“${fact.quote}”` : (fact.note || "")));
 }
 
+function custodyRow(term, value, mono = false) {
+  return [h("dt", {}, term), h("dd", mono ? { class: "mono" } : {}, value)];
+}
+
+// What a reviewer must be able to point at later: which file, proved by its hash, judged
+// against which policy, by which model, and when.
+function renderCustody(report) {
+  const when = new Date(report.created_at);
+  $("results-meta").replaceChildren(h("dl", { class: "custody" },
+    custodyRow("Document", report.document.filename),
+    custodyRow("SHA-256", report.document.sha256, true),
+    custodyRow("Extent", `${report.document.pages} page(s) · ${report.document.chars.toLocaleString()} characters`),
+    custodyRow("Vault", `${report.vault_title} (${report.vault_id})`),
+    custodyRow("Model", report.model || "not reported", true),
+    custodyRow("Reviewed", isNaN(when) ? report.created_at : when.toLocaleString())));
+}
+
 function renderReport(report) {
   lastReport = report;
-  $("results-meta").textContent = `${report.document.filename} · sha256 ${report.document.sha256} · ${report.document.pages} page(s) · model ${report.model || "n/a"}`;
+  renderCustody(report);
+  const ordered = triageOrder(report.results);
+  const open = ordered.filter((r) => r.verdict !== "cumple").length;
+  $("order-note").hidden = false;
+  $("order-note").textContent = open
+    ? `${open} of ${report.results.length} rules need a person. Listed first.`
+    : "Every rule passed, each with cited evidence.";
   $("summary").replaceChildren(...Object.entries(report.summary).map(([verdict, count]) =>
     h("li", {}, h("span", { class: `badge ${verdict}` }, `${VERDICTS[verdict].symbol} ${verdict}: ${count}`))));
-  $("cards").replaceChildren(...report.results.map(renderCard));
+  $("cards").replaceChildren(...ordered.map(renderCard));
   revealResults();
 }
 
@@ -288,7 +326,9 @@ function pendingCard(rule) {
     h("div", { class: "card-head" },
       h("div", {},
         h("h3", {}, rule.title),
-        h("span", { class: "rule-id" }, `${rule.id} · ${rule.severity} severity`)),
+        h("p", { class: "rule-id" },
+          h("span", { class: `sev ${rule.severity}` }, rule.severity),
+          h("span", {}, rule.id))),
       h("span", { class: "badge pending" }, "… checking")),
     h("div", { class: "skeleton", "aria-hidden": "true" }, h("span", {}), h("span", {}), h("span", {})));
 }
@@ -297,6 +337,7 @@ function renderPending(file) {
   const vault = vaults.find((v) => v.id === $("vault").value);
   const rules = vault ? vault.rules : [];
   $("results-meta").textContent = `${file.name} · ${vault ? vault.title : ""}`;
+  $("order-note").hidden = true;
   $("summary").replaceChildren(
     h("li", {}, h("span", { class: "badge pending" },
       rules.length === 1 ? "checking 1 rule" : `checking ${rules.length} rules`)),

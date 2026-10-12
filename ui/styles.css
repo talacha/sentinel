@@ -202,3 +202,21 @@ h1 { display: flex; align-items: center; gap: 9px; }
 /* --- tabular figures ------------------------------------------------------ */
 /* Digits in evidence, facts and the summary must not shift width as values change. */
 .summary, table.facts td, .meta, .rule-id { font-variant-numeric: tabular-nums; }
+
+/* --- chain of custody ----------------------------------------------------- */
+.custody { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--sunken); }
+.custody dt { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: .04em; align-self: baseline; }
+.custody dd { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.custody dd.mono { font-family: var(--mono); font-size: 0.8rem; }
+
+.order-note { margin: 12px 0 10px; font-size: 0.9rem; color: var(--muted); }
+.order-note[hidden] { display: none; }
+
+/* The rule identifier sits under the title with its severity, so triage is readable
+   without opening the card. */
+.rule-id { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; }
+
+@media (max-width: 520px) {
+  .custody { grid-template-columns: 1fr; gap: 2px; }
+  .custody dt { margin-top: 7px; }
+}
