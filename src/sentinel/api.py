@@ -289,6 +289,7 @@ def create_app(
             "llm_configured": bool(s.llm_base_url and s.llm_model),
             "llm_host": s.llm_host,
             "llm_model": s.llm_model,
+            "llm_perimeter": s.llm_perimeter,
             "search_configured": bool(s.tavily_api_key),
             "vaults": vaults,
             "vault_error": vault_error,
