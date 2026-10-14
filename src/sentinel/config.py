@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Inference endpoints known to be multi-tenant: document text sent here leaves the operator's
+# perimeter, so Sentinel labels them instead of letting an operator assume otherwise.
+_SHARED_INFERENCE_HOSTS = frozenset(
+    {
+        "api.tokenfactory.nebius.com",
+        "api.studio.nebius.ai",
+        "api.openai.com",
+        "api.anthropic.com",
+        "api.mistral.ai",
+        "api.together.xyz",
+        "api.groq.com",
+        "openrouter.ai",
+    }
+)
 
 
 class ConfigError(RuntimeError):
@@ -38,6 +55,8 @@ class Settings(BaseSettings):
 
     # App.
     vaults_dir: Path = Path("vaults")
+    # Synthetic documents offered in the UI so a visitor can review one without a file.
+    samples_dir: Path = Path("samples")
     audit_log_path: Path = Path("audit/audit.jsonl")
     max_upload_mb: int = Field(default=20, ge=1)
     max_workers: int = Field(default=4, ge=1)
@@ -83,6 +102,30 @@ class Settings(BaseSettings):
     def llm_host(self) -> str | None:
         """Host the LLM client talks to (for startup logs and /healthz)."""
         return urlparse(self.llm_base_url).netloc if self.llm_base_url else None
+
+    @property
+    def llm_perimeter(self) -> Literal["dedicated", "shared", "unknown"]:
+        """Whether document text goes somewhere only this operator can reach.
+
+        Deliberately conservative, in the spirit of `revisar`: "dedicated" only when the
+        address provably cannot be a public multi-tenant API, "shared" only for endpoints
+        known to be multi-tenant. Anything else is "unknown" and says so, because a public
+        address may equally be the operator's own dedicated GPU or somebody's shared API.
+        """
+        host = (self.llm_host or "").rsplit("@", 1)[-1]
+        host = re.sub(r":\d+$", "", host).strip("[]").lower()
+        if not host:
+            return "unknown"
+        if host in _SHARED_INFERENCE_HOSTS:
+            return "shared"
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+            return "dedicated"
+        try:
+            addr = ip_address(host)
+        except ValueError:
+            return "unknown"
+        private = addr.is_loopback or addr.is_private or addr.is_link_local
+        return "dedicated" if private else "unknown"
 
 
 @lru_cache

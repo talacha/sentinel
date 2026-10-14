@@ -28,6 +28,7 @@ from .ingest import IngestError, ingest_bytes
 from .limits import FailureThrottle, HourlyLimiter
 from .models import ReviewReport
 from .runtime import BY_NAME, ENGINE_FIELDS, SECRETS, OverrideError, RuntimeConfig
+from .samples import load_samples
 from .users import (
     MIN_PASSWORD_LENGTH,
     PasswordPolicyError,
@@ -289,6 +290,7 @@ def create_app(
             "llm_configured": bool(s.llm_base_url and s.llm_model),
             "llm_host": s.llm_host,
             "llm_model": s.llm_model,
+            "llm_perimeter": s.llm_perimeter,
             "search_configured": bool(s.tavily_api_key),
             "vaults": vaults,
             "vault_error": vault_error,
@@ -309,6 +311,26 @@ def create_app(
                 "rules": [{"id": r.id, "title": r.title, "severity": r.severity} for r in v.rules],
             }
             for v in registry
+        ]
+
+    @app.get("/v1/samples")
+    def list_samples() -> list[dict]:
+        """Bundled synthetic documents, text inlined.
+
+        There is no per-sample route on purpose: nothing the caller sends is used to build a
+        path, so this cannot be walked into the filesystem.
+        """
+        return [
+            {
+                "id": s.id,
+                "vault_id": s.vault_id,
+                "path": s.path,
+                "filename": s.path.rsplit("/", 1)[-1],
+                "label": s.label,
+                "note": s.note,
+                "text": s.text,
+            }
+            for s in load_samples(cfg().samples_dir)
         ]
 
     @app.post("/v1/reviews", response_model=ReviewReport)
