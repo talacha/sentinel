@@ -24,7 +24,7 @@ the Idea.
 | Requirement (from the rules) | Status |
 | --- | --- |
 | Runs on Token Factory or AI Cloud, and uses an NVIDIA open model. Token Factory counts if "the project makes a runtime call to the Token Factory inference API". | **Done.** Sentinel calls `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` through Token Factory. Verified live on 2026-09-23: 24 of 24 sample verdicts as expected. |
-| A URL to a working demo. A private one is allowed if you include login credentials in the testing instructions, and it must be free for the judges to use. | **To do.** Deploy with the runbook below; give judges the visitor login. |
+| A URL to a working demo. A private one is allowed if you include login credentials in the testing instructions, and it must be free for the judges to use. | **Done.** Live at https://sntnl.cc (deployed 2026-09-24). Still to do: hand judges the visitor login in the Devpost testing instructions (see the [roadmap](roadmap.md#track-c-hackathon-submission-deadline-2026-10-30-1000-am-pt)). |
 | A public demo video under 3 minutes on YouTube, with audio explaining how you used Token Factory and Nemotron. | **To do.** A script is in [deploy/README.md](../deploy/README.md#7-demo-checklist). |
 | A public code repository with all the source and setup instructions. | **Done.** The repository is public. |
 | An open-source license file (Apache 2.0, MIT, or MPL 2.0). | **Done.** [`LICENSE`](../LICENSE) is MIT, Copyright (c) 2026 Sentinel PLD. Confirm GitHub shows "MIT" on the repository page once it is on `main`. |
